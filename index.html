@@ -167,7 +167,7 @@
     <section id="sectionPhoDiem" class="thpt-report-wrapper">
       <div class="report-action-bar">
         <div class="report-action-title">
-          <i class="fa-solid fa-chart-column" style="color: #2563eb;"></i>
+          <i class="fa-solid fa-chart-column" style="color: #27397c;"></i>
           <span>Phổ điểm môn thi</span>
         </div>
         <div class="export-controls">
@@ -274,11 +274,11 @@
     <section id="sectionMultiSession" class="thpt-report-wrapper">
       <div class="report-action-bar">
         <div class="report-action-title">
-          <i class="fa-solid fa-chart-line" style="color: #059669;"></i>
+          <i class="fa-solid fa-chart-line" style="color: #ee642c;"></i>
           <span>So sánh các đợt thi</span>
         </div>
         <div class="export-controls">
-          <button class="btn btn-success btn-sm" id="btnExportMultiSession">
+          <button class="btn btn-accent btn-sm" id="btnExportMultiSession">
             <i class="fa-solid fa-download"></i>
             <span>Tải ảnh</span>
           </button>
@@ -310,7 +310,7 @@
     <section id="sectionGroupRanking" class="thpt-report-wrapper">
       <div class="report-action-bar">
         <div class="report-action-title">
-          <i class="fa-solid fa-users-rectangle" style="color: #7c3aed;"></i>
+          <i class="fa-solid fa-users-rectangle" style="color: #27397c;"></i>
           <span>Khối lớp & Giáo viên</span>
         </div>
         <div class="export-controls">
@@ -351,7 +351,7 @@
         <div id="subViewGradeSummary" style="display: none;">
           <div class="thpt-dual-tables-grid">
             <div class="thpt-rank-box">
-              <h3><i class="fa-solid fa-ranking-star" style="color:#2563eb; margin-right:5px;"></i>ĐTB & <span class="highlight-red">ĐIỂM CAO NHẤT</span> TỪNG KHỐI</h3>
+              <h3><i class="fa-solid fa-ranking-star" style="color:#27397c; margin-right:5px;"></i>ĐTB & <span class="highlight-red">ĐIỂM CAO NHẤT</span> TỪNG KHỐI</h3>
               <table class="thpt-rank-table" id="tableGradeAvgAndMax">
                 <thead>
                   <tr>
@@ -368,7 +368,7 @@
             </div>
 
             <div class="thpt-rank-box">
-              <h3><i class="fa-solid fa-medal" style="color:#f59e0b; margin-right:5px;"></i>PHÂN LOẠI <span class="highlight-red">ĐIỂM GIỎI (&gt;=8) & ĐIỂM 10</span></h3>
+              <h3><i class="fa-solid fa-medal" style="color:#ee642c; margin-right:5px;"></i>PHÂN LOẠI <span class="highlight-red">ĐIỂM GIỎI (&gt;=8) & ĐIỂM 10</span></h3>
               <table class="thpt-rank-table" id="tableGradeQuality">
                 <thead>
                   <tr>
@@ -393,12 +393,12 @@
     <section id="sectionTopStudents" class="thpt-report-wrapper">
       <div class="report-action-bar">
         <div class="report-action-title">
-          <i class="fa-solid fa-trophy" style="color: #f59e0b;"></i>
+          <i class="fa-solid fa-trophy" style="color: #ee642c;"></i>
           <span>Top điểm cao</span>
         </div>
         <div class="export-controls">
           <div class="top-n-badge-box">
-            <i class="fa-solid fa-crown" style="color:#d97706; font-size:11px;"></i>
+            <i class="fa-solid fa-crown" style="color:#ee642c; font-size:11px;"></i>
             <label for="topNInput">Top</label>
             <input type="number" id="topNInput" value="20" min="1" max="500" />
           </div>
@@ -440,7 +440,7 @@
     <section id="sectionAbsentAndSearch" class="thpt-report-wrapper">
       <div class="report-action-bar">
         <div class="report-action-title">
-          <i class="fa-solid fa-list-check" style="color: #e11d48;"></i>
+          <i class="fa-solid fa-list-check" style="color: #ee642c;"></i>
           <span>Bảng điểm & Vắng thi</span>
         </div>
         <div class="export-controls">
@@ -452,7 +452,7 @@
             <option value="ALL" selected>Tất cả học sinh</option>
             <option value="SCORED">Có điểm dự thi</option>
             <option value="GT9">Điểm &gt;= 9.0 (Nổi bật)</option>
-            <option value="LT5">Điểm &lt; 5.0 (Điểm đỏ)</option>
+            <option value="LT5">Điểm &lt; 5.0 (Dưới TB)</option>
             <option value="ABSENT">Vắng thi (dấu x)</option>
           </select>
           <button class="btn btn-outline btn-sm" id="btnExportAbsentCSV" title="Xuất file CSV">
@@ -490,7 +490,7 @@
     <section id="sectionAllSubjectsOverview" class="thpt-report-wrapper">
       <div class="report-action-bar">
         <div class="report-action-title">
-          <i class="fa-solid fa-grip" style="color: #0284c7;"></i>
+          <i class="fa-solid fa-grip" style="color: #27397c;"></i>
           <span>Toàn cảnh các môn</span>
         </div>
         <div class="export-controls">
@@ -514,9 +514,9 @@
         <h3>Nhập File Điểm</h3>
         <button class="btn btn-outline btn-sm" id="btnCloseUploadModal">Đóng</button>
       </div>
-      <div id="uploadFileSummaryBox" style="background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; font-size: 12.5px; color: #0369a1;"></div>
+      <div id="uploadFileSummaryBox" style="background: #eef1f8; border: 1px solid #d5dcf0; border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; font-size: 12.5px; color: #27397c;"></div>
 
-      <div id="blankScoreNotice" style="display: none; background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; font-size: 12.5px; color: #92400e;">
+      <div id="blankScoreNotice" style="display: none; background: #fef2ec; border: 1px solid #fbd5c4; border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; font-size: 12.5px; color: #ee642c;">
         <strong>File chưa điền điểm!</strong>
         <label style="display: flex; align-items: center; gap: 6px; margin-top: 6px; font-weight: 700; cursor: pointer;">
           <input type="checkbox" id="autoFillMockScoresCheckbox" checked />
