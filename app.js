@@ -779,14 +779,12 @@
     container.innerHTML = '';
 
     sess.subjects.forEach((subj) => {
-      const grades = getGradesForSubject(sess, subj);
       const iconCls = getSubjectIconClass(subj);
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'subject-tab' + (state.currentSubject === subj ? ' active' : '');
       btn.innerHTML = `
         <span class="subj-tab-left"><i class="${iconCls}"></i> <span>${escapeHtml(subj)}</span></span>
-        <span class="subj-badge">K${grades.join(',')}</span>
       `;
       btn.addEventListener('click', () => {
         if (window.innerWidth <= 960) {
@@ -3182,7 +3180,8 @@
     document.getElementById('sectionGroupRanking').style.display = v === 'all' || v === 'grouprank' ? '' : 'none';
     document.getElementById('sectionTopStudents').style.display =
       v === 'all' || v === 'topstudents' || v === 'absent' ? '' : 'none';
-    document.getElementById('sectionAllSubjectsOverview').style.display = v === 'all' || v === 'allsubjects' ? '' : 'none';
+    const allSubjSec = document.getElementById('sectionAllSubjectsOverview');
+    if (allSubjSec) allSubjSec.style.display = v === 'all' || v === 'allsubjects' ? '' : 'none';
   }
 
   function syncStickyReportActionBars() {
@@ -3449,15 +3448,7 @@
     }
 
     document.getElementById('btnToggleSidebar')?.addEventListener('click', toggleSidebar);
-    document.getElementById('btnCloseSidebar')?.addEventListener('click', () => {
-      if (window.innerWidth <= 960) {
-        document.body.classList.remove('sidebar-mobile-open');
-      } else {
-        document.body.classList.add('sidebar-collapsed');
-        setTimeout(() => refreshAllUI(false), 250);
-      }
-      syncSidebarToggleLabel();
-    });
+    document.getElementById('btnCloseSidebar')?.addEventListener('click', toggleSidebar);
     document.getElementById('sidebarBackdrop')?.addEventListener('click', () => {
       document.body.classList.remove('sidebar-mobile-open');
       syncSidebarToggleLabel();
