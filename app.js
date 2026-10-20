@@ -990,7 +990,7 @@
         ? ` • GV ${customDims ? customDims.teacherOverride : state.filterTeacher}`
         : '';
 
-    ctx.fillStyle = '#0f172a';
+    ctx.fillStyle = '#27397c';
     ctx.font = isCompactMobile ? '800 12px Inter, sans-serif' : '800 14.5px Inter, sans-serif';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
@@ -1000,11 +1000,10 @@
       isCompactMobile ? 14 : 18
     );
 
-    // Color legend pills
+    // Color legend pills (Strictly 2-color palette: #27397c & #ee642c)
     const legendItems = [
-      { label: 'Dưới TB (<5)', color: '#f59e0b' },
-      { label: 'Đạt / Khá (5–8)', color: '#2563eb' },
-      { label: 'Giỏi (8–10)', color: '#10b981' },
+      { label: 'Dưới TB (<5)', color: '#ee642c' },
+      { label: 'Từ 5.0 trở lên (>=5)', color: '#27397c' },
     ];
     if (isCompactMobile) {
       let lx = padLeft;
@@ -1071,7 +1070,7 @@
 
     if (!customDims) state.chartBarRects = [];
 
-    // Draw Solid Rounded Bars (No gradients)
+    // Draw Solid Rounded Bars (Strictly 2-color palette: #ee642c & #27397c)
     for (let i = 0; i < numBins; i++) {
       const bin = bins[i];
       const barDelay = (i / numBins) * 0.22;
@@ -1086,25 +1085,21 @@
       // Hover or selected column highlight background
       const isSelected = !customDims && state.selectedBinIndex === i;
       if (i === hoverIndex || isSelected) {
-        ctx.fillStyle = isSelected ? 'rgba(219, 234, 254, 0.72)' : 'rgba(219, 234, 254, 0.45)';
+        ctx.fillStyle = isSelected ? 'rgba(39, 57, 124, 0.14)' : 'rgba(39, 57, 124, 0.08)';
         drawRoundedBadge(ctx, padLeft + i * slotW + 2, padTop, slotW - 4, plotH, 6);
       }
 
-      // Solid color by score range
-      if (i === hoverIndex || isSelected) {
-        ctx.fillStyle = '#1e40af';
-      } else if (bin.high <= 5.001) {
-        ctx.fillStyle = '#f59e0b';
-      } else if (bin.low >= 7.999) {
-        ctx.fillStyle = '#10b981';
+      // Solid color by score range (2 colors only: #ee642c for <5, #27397c for >=5)
+      if (bin.high <= 5.001) {
+        ctx.fillStyle = '#ee642c';
       } else {
-        ctx.fillStyle = '#2563eb';
+        ctx.fillStyle = '#27397c';
       }
 
       if (barH > 0.5) {
         drawRoundedTopRect(ctx, x, y, barW, barH, 6);
         if (isSelected) {
-          ctx.strokeStyle = '#0f172a';
+          ctx.strokeStyle = '#ee642c';
           ctx.lineWidth = 2;
           ctx.strokeRect(x, y, barW, barH);
         }
@@ -1128,7 +1123,7 @@
 
       // Horizontal Count Badge above bar
       if (localProgress > 0.5 && bin.count > 0) {
-        ctx.fillStyle = i === hoverIndex ? '#1e3a8a' : '#0f172a';
+        ctx.fillStyle = i === hoverIndex ? '#ee642c' : '#27397c';
         ctx.font = numBins > 25 ? '700 9.5px Inter, sans-serif' : '700 11px Inter, sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'bottom';
@@ -1141,7 +1136,7 @@
       ctx.rotate(-Math.PI / 4.2);
       ctx.textAlign = 'right';
       ctx.textBaseline = 'middle';
-      ctx.fillStyle = i === hoverIndex ? '#1d4ed8' : '#475569';
+      ctx.fillStyle = i === hoverIndex ? '#ee642c' : '#475569';
       ctx.font = numBins > 25 ? '600 9px Inter, sans-serif' : '600 10.5px Inter, sans-serif';
       ctx.fillText(bin.shortLabel, 0, 0);
       ctx.restore();
@@ -1155,7 +1150,7 @@
 
       const trendPts = computeTrendCurvePoints(bins, padLeft, plotW, padTop, plotH, niceMax, state.binStep);
 
-      ctx.strokeStyle = '#e11d48';
+      ctx.strokeStyle = '#ee642c';
       ctx.lineWidth = 2.4;
       ctx.lineJoin = 'round';
       ctx.lineCap = 'round';
@@ -1168,7 +1163,7 @@
 
       // Mean Reference Line + Pill Tag
       const meanX = padLeft + (stats.mean / 10) * plotW;
-      ctx.strokeStyle = '#e11d48';
+      ctx.strokeStyle = '#ee642c';
       ctx.lineWidth = 1.6;
       ctx.setLineDash([5, 4]);
       ctx.beginPath();
@@ -1181,9 +1176,9 @@
       ctx.font = '700 11px Inter, sans-serif';
       const bw = ctx.measureText(badgeText).width + 14;
       const bx = Math.max(padLeft, Math.min(padLeft + plotW - bw, meanX - bw / 2));
-      ctx.fillStyle = '#ffe4e6';
+      ctx.fillStyle = '#fef2ec';
       drawRoundedBadge(ctx, bx, padTop - 2, bw, 20, 6);
-      ctx.fillStyle = '#e11d48';
+      ctx.fillStyle = '#ee642c';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(badgeText, bx + bw / 2, padTop + 8);
@@ -1285,7 +1280,7 @@
         tooltip.classList.add('visible');
         tooltip.style.left = `${found.barX}px`;
         tooltip.style.top = `${Math.max(42, found.barTopY)}px`;
-        tooltip.innerHTML = `<div style="font-weight:800; color:#93c5fd;">Khoảng điểm ${found.bin.label}</div><div>Số lượng: <b>${fmtInt(found.bin.count)} TS</b> (${fmtFixed(found.bin.pct, 1)}%)</div><div style="font-size:11px; color:#fde047; margin-top:3px;">👆 Bấm vào cột để xem danh sách HS</div>`;
+        tooltip.innerHTML = `<div style="font-weight:800; color:#fbd5c4;">Khoảng điểm ${found.bin.label}</div><div>Số lượng: <b>${fmtInt(found.bin.count)} TS</b> (${fmtFixed(found.bin.pct, 1)}%)</div><div style="font-size:11px; color:#ee642c; margin-top:3px;">👆 Bấm vào cột để xem danh sách HS</div>`;
       } else {
         canvas.style.cursor = 'default';
         drawTHPTChartOnCanvas(canvas, stats, 1, -1);
@@ -1425,14 +1420,14 @@
 
     panel.style.display = 'block';
     panel.innerHTML = `
-      <div class="thpt-rank-box animate-fade-in" style="border-color:#93c5fd; background:#f8fafc;">
+      <div class="thpt-rank-box animate-fade-in" style="border-color:#d5dcf0; background:#f8fafc;">
         <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:10px;">
           <div>
             <h3 style="margin-bottom:2px; font-size:14.5px;">
-              <i class="fa-solid fa-users-viewfinder" style="color:#2563eb; margin-right:5px;"></i>CỘT ĐIỂM <span class="highlight-red">${escapeHtml(bin.shortLabel)}</span> (${escapeHtml(bin.label)})
+              <i class="fa-solid fa-users-viewfinder" style="color:#27397c; margin-right:5px;"></i>CỘT ĐIỂM <span class="highlight-red">${escapeHtml(bin.shortLabel)}</span> (${escapeHtml(bin.label)})
             </h3>
             <div style="font-size:12px; color:#475569; font-weight:600;">
-              ${escapeHtml(state.currentSubject)} • Khối ${escapeHtml(String(state.filterGrade))}${escapeHtml(teacherLabel)} • <b style="color:#e11d48;">${fmtInt(bin.count)} thí sinh</b> (${fmtFixed(bin.pct, 1)}%)
+              ${escapeHtml(state.currentSubject)} • Khối ${escapeHtml(String(state.filterGrade))}${escapeHtml(teacherLabel)} • <b style="color:#ee642c;">${fmtInt(bin.count)} thí sinh</b> (${fmtFixed(bin.pct, 1)}%)
             </div>
           </div>
           <button type="button" class="btn btn-outline btn-sm" id="btnClearSelectedBin"><i class="fa-solid fa-xmark"></i> Đóng</button>
@@ -1478,16 +1473,16 @@
     const teacherLabel = teacherFilter && teacherFilter !== 'ALL' ? ` • GV ${teacherFilter}` : ' • Cả nhóm';
 
     document.getElementById('binModalTitle').innerHTML =
-      `<i class="fa-solid fa-users-viewfinder" style="color:#2563eb; margin-right:6px;"></i>CỘT ĐIỂM <span style="color:#e11d48;">${escapeHtml(bin.shortLabel)}</span> <span style="font-size:13px; color:#475569;">(${escapeHtml(bin.label)})</span>`;
+      `<i class="fa-solid fa-users-viewfinder" style="color:#27397c; margin-right:6px;"></i>CỘT ĐIỂM <span style="color:#ee642c;">${escapeHtml(bin.shortLabel)}</span> <span style="font-size:13px; color:#475569;">(${escapeHtml(bin.label)})</span>`;
 
     document.getElementById('binModalSubtitle').innerHTML =
-      `<b>${escapeHtml(subject)}</b> • Khối <b>${escapeHtml(String(grade))}</b>${escapeHtml(teacherLabel)} (${escapeHtml(session?.shortName || '')}) • <b style="color:#e11d48;">${fmtInt(bin.count)} TS</b> (${fmtFixed(bin.pct, 1)}%)`;
+      `<b>${escapeHtml(subject)}</b> • Khối <b>${escapeHtml(String(grade))}</b>${escapeHtml(teacherLabel)} (${escapeHtml(session?.shortName || '')}) • <b style="color:#ee642c;">${fmtInt(bin.count)} TS</b> (${fmtFixed(bin.pct, 1)}%)`;
 
     // Render quick switcher pills for all columns
     const switcher = document.getElementById('binModalQuickSwitcher');
     if (switcher) {
       switcher.innerHTML =
-        `<span style="font-size:11.5px; font-weight:700; color:#1e40af; display:inline-flex; align-items:center; gap:4px; margin-right:4px;"><i class="fa-solid fa-chart-column"></i> Cột:</span>` +
+        `<span style="font-size:11.5px; font-weight:700; color:#27397c; display:inline-flex; align-items:center; gap:4px; margin-right:4px;"><i class="fa-solid fa-chart-column"></i> Cột:</span>` +
         stats.bins
           .map((b, idx) => {
             const act = idx === binIndex ? 'active' : '';
@@ -1633,7 +1628,7 @@
     const plotW = width - padLeft - padRight;
     const plotH = height - padTop - padBottom;
 
-    const palette = ['#94a3b8', '#38bdf8', '#2563eb', '#10b981', '#f59e0b', '#e11d48'];
+    const palette = ['#27397c', '#ee642c', '#5265ab', '#f38b5f', '#1d2b61', '#c94b16'];
 
     let maxPct = 10;
     sessionStatsList.forEach((s) => {
@@ -1785,13 +1780,13 @@
         <div class="thpt-rank-box animate-fade-in">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 8px;">
             <h3 style="margin-bottom: 0;">
-              <i class="fa-solid fa-layer-group" style="color:#2563eb; margin-right:5px;"></i>KHỐI <span class="highlight-red">${escapeHtml(String(grade))}</span>
+              <i class="fa-solid fa-layer-group" style="color:#27397c; margin-right:5px;"></i>KHỐI <span class="highlight-red">${escapeHtml(String(grade))}</span>
             </h3>
             <div style="display:flex; flex-wrap:wrap; gap:6px;">
               <span class="mini-stat-chip"><i class="fa-solid fa-user-check"></i> Dự thi: <b>${fmtInt(gradeTotalStats.count)}</b></span>
-              <span class="mini-stat-chip" style="color:#7c3aed; border-color:#ddd6fe; background:#f5f3ff;"><i class="fa-solid fa-user-slash"></i> Vắng: <b>${fmtInt(gradeTotalStats.absentCount)}</b></span>
-              <span class="mini-stat-chip" style="color:#e11d48; border-color:#fecdd3; background:#fff1f2;"><i class="fa-solid fa-chart-line"></i> ĐTB Nhóm: <b>${fmtFixed(groupMean, 2)}</b></span>
-              <span class="mini-stat-chip" style="color:#047857; border-color:#a7f3d0; background:#ecfdf5;"><i class="fa-solid fa-trophy"></i> Cao nhất: <b>${fmtFixed(gradeTotalStats.maxScore, 2)}</b></span>
+              <span class="mini-stat-chip" style="color:#ee642c; border-color:#fbd5c4; background:#fef2ec;"><i class="fa-solid fa-user-slash"></i> Vắng: <b>${fmtInt(gradeTotalStats.absentCount)}</b></span>
+              <span class="mini-stat-chip" style="color:#ee642c; border-color:#fbd5c4; background:#fef2ec;"><i class="fa-solid fa-chart-line"></i> ĐTB Nhóm: <b>${fmtFixed(groupMean, 2)}</b></span>
+              <span class="mini-stat-chip" style="color:#27397c; border-color:#d5dcf0; background:#eef1f8;"><i class="fa-solid fa-trophy"></i> Cao nhất: <b>${fmtFixed(gradeTotalStats.maxScore, 2)}</b></span>
             </div>
           </div>
           <div style="overflow-x: auto; border-radius: 10px; border: 1px solid #cbd5e1;">
@@ -1819,16 +1814,16 @@
                     return `
                   <tr>
                     <td class="stt-col">${idx + 1}</td>
-                    <td style="font-weight: 700;"><i class="fa-regular fa-user" style="color:#64748b; margin-right:5px; font-size:11.5px;"></i>GV ${escapeHtml(tr.teacher)}</td>
+                    <td style="font-weight: 700;"><i class="fa-regular fa-user" style="color:#27397c; margin-right:5px; font-size:11.5px;"></i>GV ${escapeHtml(tr.teacher)}</td>
                     <td class="num-col">${fmtInt(tr.stats.count)}</td>
                     <td class="num-col text-thpt-purple">${fmtInt(tr.stats.absentCount)}</td>
                     <td class="num-col text-thpt-red" style="font-size: 14px;">${fmtFixed(tr.stats.mean, 2)}</td>
-                    <td class="num-col" style="font-weight: 700; color: #d97706;">${fmtFixed(tr.groupMean, 2)}</td>
+                    <td class="num-col" style="font-weight: 700; color: #27397c;">${fmtFixed(tr.groupMean, 2)}</td>
                     <td class="num-col ${diffClass}">${diffSign}${fmtFixed(tr.diff, 2)}</td>
-                    <td class="num-col" style="font-weight: 800; color: #059669;">${fmtFixed(tr.stats.maxScore, 2)}</td>
-                    <td class="num-col" style="font-weight: 700; color: #2563eb;">${fmtInt(tr.stats.gte8Count)} (${fmtFixed(tr.stats.gte8Pct, 1)}%)</td>
+                    <td class="num-col" style="font-weight: 800; color: #27397c;">${fmtFixed(tr.stats.maxScore, 2)}</td>
+                    <td class="num-col" style="font-weight: 700; color: #27397c;">${fmtInt(tr.stats.gte8Count)} (${fmtFixed(tr.stats.gte8Pct, 1)}%)</td>
                     <td class="num-col text-thpt-red">${fmtInt(tr.stats.score10Count)}</td>
-                    <td class="num-col">${fmtInt(tr.stats.lt5Count)} (${fmtFixed(tr.stats.lt5Pct, 1)}%)</td>
+                    <td class="num-col" style="font-weight: 700; color: #ee642c;">${fmtInt(tr.stats.lt5Count)} (${fmtFixed(tr.stats.lt5Pct, 1)}%)</td>
                   </tr>
                 `;
                   })
@@ -1867,8 +1862,8 @@
     const plotW = width - padLeft - padRight;
     const plotH = height - padTop - padBottom;
 
-    // Modern Legend
-    ctx.fillStyle = '#2563eb';
+    // Modern Legend (Strictly 2-color palette: #27397c & #ee642c)
+    ctx.fillStyle = '#27397c';
     drawRoundedBadge(ctx, padLeft, 12, 13, 13, 4);
     ctx.fillStyle = '#0f172a';
     ctx.font = '700 12px Inter, sans-serif';
@@ -1876,7 +1871,7 @@
     ctx.textBaseline = 'middle';
     ctx.fillText('ĐTB Khối của Giáo viên', padLeft + 18, 18.5);
 
-    ctx.fillStyle = '#f59e0b';
+    ctx.fillStyle = '#ee642c';
     drawRoundedBadge(ctx, padLeft + 195, 12, 13, 13, 4);
     ctx.fillStyle = '#0f172a';
     ctx.fillText('ĐTB Chung cả Nhóm (cùng Khối)', padLeft + 213, 18.5);
@@ -1905,31 +1900,31 @@
     items.forEach((it, idx) => {
       const gx = padLeft + idx * slotW + (slotW - groupW) / 2;
 
-      // Bar 1: Teacher's Grade Mean (Solid Blue)
+      // Bar 1: Teacher's Grade Mean (Solid Navy #27397c)
       const hMean = (it.mean / 10) * plotH * state.chartAnimProgress;
       const yMean = padTop + plotH - hMean;
-      ctx.fillStyle = '#2563eb';
+      ctx.fillStyle = '#27397c';
       drawRoundedTopRect(ctx, gx, yMean, barW - 2, hMean, 5);
 
-      ctx.fillStyle = '#1e3a8a';
+      ctx.fillStyle = '#27397c';
       ctx.font = '700 10.5px Inter, sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText(fmtFixed(it.mean, 2), gx + barW / 2 - 1, yMean - 6);
 
-      // Bar 2: Whole Group's Grade Mean (Solid Amber)
+      // Bar 2: Whole Group's Grade Mean (Solid Orange #ee642c)
       const hGroup = (it.groupMean / 10) * plotH * state.chartAnimProgress;
       const yGroup = padTop + plotH - hGroup;
-      ctx.fillStyle = '#f59e0b';
+      ctx.fillStyle = '#ee642c';
       drawRoundedTopRect(ctx, gx + barW, yGroup, barW - 2, hGroup, 5);
 
-      ctx.fillStyle = '#b45309';
+      ctx.fillStyle = '#ee642c';
       ctx.font = '700 10.5px Inter, sans-serif';
       ctx.fillText(fmtFixed(it.groupMean, 2), gx + barW + barW / 2 - 1, yGroup - 6);
 
       // Delta badge above the pair
       const topY = Math.min(yMean, yGroup) - 21;
       const diffSign = it.diff >= 0 ? '+' : '';
-      ctx.fillStyle = it.diff >= 0 ? '#059669' : '#e11d48';
+      ctx.fillStyle = it.diff >= 0 ? '#27397c' : '#ee642c';
       ctx.font = '800 10px Inter, sans-serif';
       ctx.fillText(`(${diffSign}${fmtFixed(it.diff, 2)})`, gx + groupW / 2, Math.max(padTop - 8, topY));
 
@@ -1980,7 +1975,7 @@
           <td class="num-col">${fmtInt(g.st.count)}</td>
           <td class="num-col text-thpt-purple">${fmtInt(g.st.absentCount)}</td>
           <td class="num-col text-thpt-red">${fmtFixed(g.st.mean, 2)}</td>
-          <td class="num-col" style="font-weight: 800; color: #059669;">${fmtFixed(g.st.maxScore, 2)}</td>
+          <td class="num-col" style="font-weight: 800; color: #27397c;">${fmtFixed(g.st.maxScore, 2)}</td>
           <td style="font-size: 12.5px; font-weight: 600;">${escapeHtml(g.topScorers)}</td>
         </tr>
       `
@@ -1995,9 +1990,9 @@
         <tr>
           <td class="stt-col" style="width: 72px;">Khối ${escapeHtml(String(g.grade))}</td>
           <td class="num-col text-thpt-red">${fmtInt(g.st.score10Count)}</td>
-          <td class="num-col" style="font-weight:700; color:#2563eb;">${fmtInt(g.st.gte8Count)} (${fmtFixed(g.st.gte8Pct, 1)}%)</td>
+          <td class="num-col" style="font-weight:700; color:#27397c;">${fmtInt(g.st.gte8Count)} (${fmtFixed(g.st.gte8Pct, 1)}%)</td>
           <td class="num-col">${fmtInt(g.st.gte7Count)} (${fmtFixed(g.st.gte7Pct, 1)}%)</td>
-          <td class="num-col text-thpt-purple">${fmtInt(g.st.lt5Count)} (${fmtFixed(g.st.lt5Pct, 1)}%)</td>
+          <td class="num-col" style="font-weight:700; color:#ee642c;">${fmtInt(g.st.lt5Count)} (${fmtFixed(g.st.lt5Pct, 1)}%)</td>
         </tr>
       `
         )
@@ -2057,7 +2052,7 @@
         <div class="thpt-rank-box animate-fade-in">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
             <h3 style="margin-bottom:0;">
-              <i class="fa-solid fa-crown" style="color:#f59e0b; margin-right:5px;"></i>TOP <span class="highlight-red">${topN}</span> — <span class="highlight-red">${escapeHtml(subj.toUpperCase())} (KHỐI ${escapeHtml(String(grade))})</span>${escapeHtml(tLabel)}
+              <i class="fa-solid fa-crown" style="color:#ee642c; margin-right:5px;"></i>TOP <span class="highlight-red">${topN}</span> — <span class="highlight-red">${escapeHtml(subj.toUpperCase())} (KHỐI ${escapeHtml(String(grade))})</span>${escapeHtml(tLabel)}
             </h3>
             <span class="mini-stat-chip">
               <i class="fa-solid fa-users"></i> ${list.length} / ${totalTested} TS
@@ -2127,13 +2122,13 @@
     if (strip) {
       const teachers = Array.from(new Set(baseRecs.map((r) => r.teacher)));
       strip.innerHTML =
-        `<span class="mini-stat-chip" style="background:#ecfdf5; color:#047857; border-color:#34d399;"><i class="fa-solid fa-star"></i> Trên 9 (&gt;= 9.0): <b>${totalGt9}</b></span>` +
-        `<span class="mini-stat-chip" style="background:#fee2e2; color:#dc2626; border-color:#f87171;"><i class="fa-solid fa-circle-exclamation"></i> Dưới 5 (&lt; 5.0): <b>${totalLt5}</b></span>` +
-        `<span class="mini-stat-chip" style="background:#fef3c7; color:#b45309; border-color:#fcd34d;"><i class="fa-solid fa-user-slash"></i> Vắng (x): <b>${totalAbsent}/${baseRecs.length}</b></span>` +
+        `<span class="mini-stat-chip" style="background:#eef1f8; color:#27397c; border-color:#b8c4e6;"><i class="fa-solid fa-star"></i> Trên 9 (&gt;= 9.0): <b>${totalGt9}</b></span>` +
+        `<span class="mini-stat-chip" style="background:#fef2ec; color:#ee642c; border-color:#fbd5c4;"><i class="fa-solid fa-circle-exclamation"></i> Dưới 5 (&lt; 5.0): <b>${totalLt5}</b></span>` +
+        `<span class="mini-stat-chip" style="background:#fef2ec; color:#ee642c; border-color:#fbd5c4;"><i class="fa-solid fa-user-slash"></i> Vắng (x): <b>${totalAbsent}/${baseRecs.length}</b></span>` +
         teachers
           .map((t) => {
             const cnt = baseRecs.filter((r) => r.teacher === t && (r.absent || r.score === null)).length;
-            return `<span class="mini-stat-chip" style="background:#ffffff; border-color:#cbd5e1; color:#334155;"><i class="fa-regular fa-user"></i> ${escapeHtml(t)}: <b style="color:#e11d48;">${cnt}</b> vắng</span>`;
+            return `<span class="mini-stat-chip" style="background:#ffffff; border-color:#cbd5e1; color:#27397c;"><i class="fa-regular fa-user"></i> ${escapeHtml(t)}: <b style="color:#ee642c;">${cnt}</b> vắng</span>`;
           })
           .join('');
     }
@@ -2213,8 +2208,8 @@
       card.innerHTML = `
         <div style="background:#f8fafc; padding:10px 14px; border-bottom:1px solid #e2e8f0; display:flex; flex-direction:column; gap:7px;">
           <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
-            <div style="font-size:14px; font-weight:800; color:#1e3a8a; display:flex; align-items:center; gap:6px;">
-              <i class="${iconCls}" style="color:#2563eb;"></i>
+            <div style="font-size:14px; font-weight:800; color:#27397c; display:flex; align-items:center; gap:6px;">
+              <i class="${iconCls}" style="color:#ee642c;"></i>
               <span>${escapeHtml(subj.toUpperCase())} • KHỐI ${escapeHtml(String(selectedGrade))}</span>
             </div>
             <div class="mini-grade-pills">
@@ -2223,10 +2218,10 @@
           </div>
           <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
             <div style="font-size:11.5px; color:#475569; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-              <span><i class="fa-solid fa-user-check" style="color:#2563eb;"></i> <b>${fmtInt(st.count)}</b></span>
-              <span><i class="fa-solid fa-user-slash" style="color:#7c3aed;"></i> <b style="color:#7c3aed;">${st.absentCount}</b></span>
-              <span>ĐTB: <b style="color:#e11d48;">${fmtFixed(st.mean, 2)}</b></span>
-              <span>Điểm 10: <b style="color:#059669;">${st.score10Count}</b></span>
+              <span><i class="fa-solid fa-user-check" style="color:#27397c;"></i> <b style="color:#27397c;">${fmtInt(st.count)}</b></span>
+              <span><i class="fa-solid fa-user-slash" style="color:#ee642c;"></i> <b style="color:#ee642c;">${st.absentCount}</b></span>
+              <span>ĐTB: <b style="color:#ee642c;">${fmtFixed(st.mean, 2)}</b></span>
+              <span>Điểm 10: <b style="color:#27397c;">${st.score10Count}</b></span>
             </div>
             <div style="display:flex; gap:5px;">
               <button type="button" class="btn btn-outline btn-sm" data-focus-subj="${escapeHtml(subj)}"><i class="fa-solid fa-expand"></i> Chi tiết</button>
@@ -2333,11 +2328,9 @@
       const cx = padLeft + i * slotW + slotW / 2;
 
       if (bin.high <= 5.001) {
-        ctx.fillStyle = '#f59e0b';
-      } else if (bin.low >= 7.999) {
-        ctx.fillStyle = '#10b981';
+        ctx.fillStyle = '#ee642c';
       } else {
-        ctx.fillStyle = '#2563eb';
+        ctx.fillStyle = '#27397c';
       }
 
       if (barH > 0.5) {
@@ -2356,7 +2349,7 @@
       });
 
       if (bin.count > 0) {
-        ctx.fillStyle = '#0f172a';
+        ctx.fillStyle = '#27397c';
         ctx.font = '700 9px Inter, sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'bottom';
@@ -2417,7 +2410,7 @@
     ctx.fillStyle = '#f8fafc';
     ctx.fillRect(0, 0, baseW, baseH);
 
-    ctx.fillStyle = '#0f172a';
+    ctx.fillStyle = '#27397c';
     ctx.font = '800 24px Inter, sans-serif';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
@@ -2427,7 +2420,7 @@
       30
     );
 
-    ctx.fillStyle = '#2563eb';
+    ctx.fillStyle = '#ee642c';
     ctx.font = '800 16px Inter, sans-serif';
     ctx.textAlign = 'right';
     ctx.fillText(state.centerName.toUpperCase(), baseW - 40, 34);
@@ -2457,15 +2450,15 @@
 
     const tableRows = [
       { name: 'Số TS dự thi', val: fmtInt(stats.count), pct: `/${fmtInt(stats.totalRoster)} ĐK`, color: '#0f172a' },
-      { name: 'Vắng thi (x)', val: fmtInt(stats.absentCount), pct: fmtPct(stats.absentPct, 2), color: '#7c3aed' },
-      { name: 'ĐTB', val: fmtFixed(stats.mean, 2), pct: '', color: '#e11d48' },
+      { name: 'Vắng thi (x)', val: fmtInt(stats.absentCount), pct: fmtPct(stats.absentPct, 2), color: '#27397c' },
+      { name: 'ĐTB', val: fmtFixed(stats.mean, 2), pct: '', color: '#ee642c' },
       { name: 'Trung vị', val: fmtDec(stats.median, 2), pct: '', color: '#0f172a' },
-      { name: 'ĐLC', val: fmtFixed(stats.stdDev, 2), pct: '', color: '#e11d48' },
+      { name: 'ĐLC', val: fmtFixed(stats.stdDev, 2), pct: '', color: '#ee642c' },
       { name: 'MAD', val: fmtDec(stats.mad, 2), pct: '', color: '#0f172a' },
-      { name: '<5', val: fmtInt(stats.lt5Count), pct: fmtPct(stats.lt5Pct, 2), color: '#0f172a' },
-      { name: '> = 7', val: fmtInt(stats.gte7Count), pct: fmtPct(stats.gte7Pct, 2), color: '#0f172a' },
+      { name: '<5', val: fmtInt(stats.lt5Count), pct: fmtPct(stats.lt5Pct, 2), color: '#ee642c' },
+      { name: '> = 7', val: fmtInt(stats.gte7Count), pct: fmtPct(stats.gte7Pct, 2), color: '#27397c' },
       { name: 'Mode', val: fmtFixed(stats.mode, 2), pct: '', color: '#0f172a' },
-      { name: 'Điểm 10', val: fmtInt(stats.score10Count), pct: '', color: '#e11d48' },
+      { name: 'Điểm 10', val: fmtInt(stats.score10Count), pct: '', color: '#ee642c' },
       { name: 'Điểm 0', val: fmtInt(stats.score0Count), pct: '', color: '#0f172a' },
       { name: '< = 1', val: fmtInt(stats.lte1Count), pct: fmtPct(stats.lte1Pct, 2), color: '#0f172a' },
     ];
@@ -2477,7 +2470,7 @@
 
     tableRows.forEach((r, idx) => {
       const ry = tableY + idx * rowH;
-      ctx.fillStyle = '#1e3a8a';
+      ctx.fillStyle = '#27397c';
       ctx.fillRect(tableX, ry, col1W, rowH);
 
       ctx.fillStyle = idx % 2 === 0 ? '#f8fafc' : '#ffffff';
@@ -2500,7 +2493,7 @@
       ctx.fillText(r.val, tableX + col1W + col2W - 12, ry + rowH / 2);
 
       if (r.pct) {
-        ctx.fillStyle = r.color === '#7c3aed' ? '#7c3aed' : '#475569';
+        ctx.fillStyle = r.color === '#27397c' ? '#27397c' : r.color === '#ee642c' ? '#ee642c' : '#475569';
         ctx.font = '600 15.5px Inter, sans-serif';
         ctx.textAlign = 'right';
         ctx.fillText(r.pct, tableX + tableW - 12, ry + rowH / 2);
@@ -2533,7 +2526,7 @@
     ctx.fillStyle = '#f8fafc';
     ctx.fillRect(0, 0, baseW, baseH);
 
-    ctx.fillStyle = '#0f172a';
+    ctx.fillStyle = '#27397c';
     ctx.font = '800 22px Inter, sans-serif';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
@@ -2550,9 +2543,9 @@
     const sessColW = (tw - labelColW) / sessionStatsList.length;
     const rowH = 36;
 
-    ctx.fillStyle = '#1e3a8a';
+    ctx.fillStyle = '#27397c';
     ctx.fillRect(tx, ty, tw, 42);
-    ctx.strokeStyle = '#3b82f6';
+    ctx.strokeStyle = '#1d2b61';
     ctx.strokeRect(tx, ty, labelColW, 42);
     ctx.fillStyle = '#ffffff';
     ctx.font = '700 15px Inter, sans-serif';
@@ -2568,22 +2561,22 @@
 
     const metricRows = [
       { label: 'Số thí sinh dự thi', v1: (s) => fmtInt(s.count), v2: (s) => `/${fmtInt(s.totalRoster)} ĐK`, color: '#0f172a' },
-      { label: 'Số thí sinh vắng thi (x)', v1: (s) => fmtInt(s.absentCount), v2: (s) => fmtPct(s.absentPct, 2), color: '#7c3aed' },
-      { label: 'Điểm trung bình', v1: (s) => fmtFixed(s.mean, 2), v2: () => '', color: '#e11d48' },
+      { label: 'Số thí sinh vắng thi (x)', v1: (s) => fmtInt(s.absentCount), v2: (s) => fmtPct(s.absentPct, 2), color: '#27397c' },
+      { label: 'Điểm trung bình', v1: (s) => fmtFixed(s.mean, 2), v2: () => '', color: '#ee642c' },
       { label: 'Trung vị', v1: (s) => fmtDec(s.median, 2), v2: () => '', color: '#0f172a' },
-      { label: 'Độ lệch chuẩn', v1: (s) => fmtFixed(s.stdDev, 2), v2: () => '', color: '#e11d48' },
+      { label: 'Độ lệch chuẩn', v1: (s) => fmtFixed(s.stdDev, 2), v2: () => '', color: '#ee642c' },
       { label: 'Độ lệch tuyệt đối trung vị (MAD)', v1: (s) => fmtDec(s.mad, 2), v2: () => '', color: '#0f172a' },
-      { label: 'Điểm dưới trung bình (<5)', v1: (s) => fmtInt(s.lt5Count), v2: (s) => fmtPct(s.lt5Pct, 2), color: '#7c3aed' },
-      { label: 'Điểm >= 7', v1: (s) => fmtInt(s.gte7Count), v2: (s) => fmtPct(s.gte7Pct, 2), color: '#7c3aed' },
+      { label: 'Điểm dưới trung bình (<5)', v1: (s) => fmtInt(s.lt5Count), v2: (s) => fmtPct(s.lt5Pct, 2), color: '#ee642c' },
+      { label: 'Điểm >= 7', v1: (s) => fmtInt(s.gte7Count), v2: (s) => fmtPct(s.gte7Pct, 2), color: '#27397c' },
       { label: 'Mode', v1: (s) => fmtDec(s.mode, 2), v2: () => '', color: '#0f172a' },
-      { label: 'Số điểm 10', v1: (s) => fmtInt(s.score10Count), v2: () => '', color: '#e11d48' },
+      { label: 'Số điểm 10', v1: (s) => fmtInt(s.score10Count), v2: () => '', color: '#ee642c' },
       { label: 'Số điểm 0', v1: (s) => fmtInt(s.score0Count), v2: () => '', color: '#0f172a' },
       { label: 'Số điểm <= 1', v1: (s) => fmtInt(s.lte1Count), v2: (s) => fmtPct(s.lte1Pct, 2), color: '#0f172a' },
     ];
 
     metricRows.forEach((mr, rIdx) => {
       const ry = ty + 42 + rIdx * rowH;
-      ctx.fillStyle = '#1e3a8a';
+      ctx.fillStyle = '#27397c';
       ctx.fillRect(tx, ry, labelColW, rowH);
       ctx.strokeStyle = '#cbd5e1';
       ctx.strokeRect(tx, ry, labelColW, rowH);
@@ -2710,7 +2703,7 @@
     const boxes = Array.from(document.querySelectorAll('#teacherByGradeTablesWrap .thpt-rank-box'));
     boxes.forEach((box) => {
       const heading = box.querySelector('h3')?.textContent.trim() || '';
-      ctx.fillStyle = '#1e3a8a';
+      ctx.fillStyle = '#27397c';
       ctx.font = '800 16px Inter, sans-serif';
       ctx.textAlign = 'left';
       ctx.fillText(heading, 40, curY);
@@ -2737,9 +2730,9 @@
     const rh = 38;
     let cx = x;
     headers.forEach((h, i) => {
-      ctx.fillStyle = '#1e3a8a';
+      ctx.fillStyle = '#27397c';
       ctx.fillRect(cx, y, colWidths[i], rh);
-      ctx.strokeStyle = '#3b82f6';
+      ctx.strokeStyle = '#1d2b61';
       ctx.strokeRect(cx, y, colWidths[i], rh);
       ctx.fillStyle = '#ffffff';
       ctx.font = '700 13.5px Inter, sans-serif';
@@ -2754,12 +2747,12 @@
       const ry = y + (rIdx + 1) * rh;
       let rx = x;
       cells.forEach((text, cIdx) => {
-        ctx.fillStyle = cIdx === 0 ? '#eff6ff' : rIdx % 2 === 0 ? '#f8fafc' : '#ffffff';
+        ctx.fillStyle = cIdx === 0 ? '#eef1f8' : rIdx % 2 === 0 ? '#f8fafc' : '#ffffff';
         ctx.fillRect(rx, ry, colWidths[cIdx], rh);
         ctx.strokeStyle = '#cbd5e1';
         ctx.strokeRect(rx, ry, colWidths[cIdx], rh);
 
-        ctx.fillStyle = cIdx === 0 ? '#1e40af' : cIdx === 4 ? '#e11d48' : '#0f172a';
+        ctx.fillStyle = cIdx === 0 ? '#27397c' : cIdx === 4 ? '#ee642c' : '#0f172a';
         ctx.font = cIdx === 0 || cIdx === 1 || cIdx === 4 ? '700 13.5px Inter, sans-serif' : '500 13.5px Inter, sans-serif';
         ctx.textAlign = cIdx === 1 ? 'left' : 'center';
         ctx.textBaseline = 'middle';
@@ -2793,7 +2786,7 @@
     ctx.fillStyle = '#f8fafc';
     ctx.fillRect(0, 0, baseW, baseH);
 
-    ctx.fillStyle = '#1e3a8a';
+    ctx.fillStyle = '#27397c';
     ctx.font = '800 23px Inter, sans-serif';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
@@ -2814,9 +2807,9 @@
 
     let cx = tx;
     headers.forEach((h, i) => {
-      ctx.fillStyle = '#1e3a8a';
+      ctx.fillStyle = '#27397c';
       ctx.fillRect(cx, ty, colWidths[i], 40);
-      ctx.strokeStyle = '#3b82f6';
+      ctx.strokeStyle = '#1d2b61';
       ctx.strokeRect(cx, ty, colWidths[i], 40);
       ctx.fillStyle = '#ffffff';
       ctx.font = '700 14.5px Inter, sans-serif';
@@ -2842,22 +2835,22 @@
       let rx = tx;
       cells.forEach((val, cIdx) => {
         if (isLt5) {
-          ctx.fillStyle = cIdx === 0 ? '#ffe4e6' : '#fff1f2';
+          ctx.fillStyle = cIdx === 0 ? '#fbd5c4' : '#fef2ec';
         } else if (isGt9) {
-          ctx.fillStyle = cIdx === 0 ? '#d1fae5' : '#ecfdf5';
+          ctx.fillStyle = cIdx === 0 ? '#d5dcf0' : '#eef1f8';
         } else {
-          ctx.fillStyle = cIdx === 0 ? '#eff6ff' : rIdx % 2 === 0 ? '#f8fafc' : '#ffffff';
+          ctx.fillStyle = cIdx === 0 ? '#eef1f8' : rIdx % 2 === 0 ? '#f8fafc' : '#ffffff';
         }
         ctx.fillRect(rx, ry, colWidths[cIdx], rowH);
         ctx.strokeStyle = '#cbd5e1';
         ctx.strokeRect(rx, ry, colWidths[cIdx], rowH);
 
         if (isLt5 && (cIdx === 1 || cIdx === 5)) {
-          ctx.fillStyle = '#dc2626';
+          ctx.fillStyle = '#ee642c';
         } else if (isGt9 && (cIdx === 1 || cIdx === 5)) {
-          ctx.fillStyle = '#047857';
+          ctx.fillStyle = '#27397c';
         } else {
-          ctx.fillStyle = cIdx === 0 ? '#1e40af' : cIdx === 5 ? '#2563eb' : '#0f172a';
+          ctx.fillStyle = cIdx === 0 ? '#27397c' : cIdx === 5 ? '#27397c' : '#0f172a';
         }
         ctx.font = cIdx === 0 || cIdx === 1 || cIdx === 5 ? '700 14.5px Inter, sans-serif' : '500 14px Inter, sans-serif';
         ctx.textAlign = cIdx === 1 ? 'left' : 'center';
@@ -2890,7 +2883,7 @@
     ctx.fillStyle = '#f8fafc';
     ctx.fillRect(0, 0, baseW, baseH);
 
-    ctx.fillStyle = '#e11d48';
+    ctx.fillStyle = '#27397c';
     ctx.font = '800 22px Inter, sans-serif';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
@@ -2902,9 +2895,9 @@
     const ty = 78;
     let cx = 40;
     headers.forEach((h, i) => {
-      ctx.fillStyle = '#1e3a8a';
+      ctx.fillStyle = '#27397c';
       ctx.fillRect(cx, ty, colWidths[i], rh);
-      ctx.strokeStyle = '#3b82f6';
+      ctx.strokeStyle = '#1d2b61';
       ctx.strokeRect(cx, ty, colWidths[i], rh);
       ctx.fillStyle = '#ffffff';
       ctx.font = '700 14px Inter, sans-serif';
@@ -2923,21 +2916,21 @@
       let rx = 40;
       cells.forEach((val, cIdx) => {
         if (isLt5) {
-          ctx.fillStyle = cIdx === 0 ? '#ffe4e6' : '#fff1f2';
+          ctx.fillStyle = cIdx === 0 ? '#fbd5c4' : '#fef2ec';
         } else if (isGt9) {
-          ctx.fillStyle = cIdx === 0 ? '#d1fae5' : '#ecfdf5';
+          ctx.fillStyle = cIdx === 0 ? '#d5dcf0' : '#eef1f8';
         } else {
-          ctx.fillStyle = cIdx === 0 ? '#eff6ff' : rIdx % 2 === 0 ? '#f8fafc' : '#ffffff';
+          ctx.fillStyle = cIdx === 0 ? '#eef1f8' : rIdx % 2 === 0 ? '#f8fafc' : '#ffffff';
         }
         ctx.fillRect(rx, ry, colWidths[cIdx], rh);
         ctx.strokeStyle = '#cbd5e1';
         ctx.strokeRect(rx, ry, colWidths[cIdx], rh);
         if (isLt5 && (cIdx === 1 || cIdx === 5)) {
-          ctx.fillStyle = '#dc2626';
+          ctx.fillStyle = '#ee642c';
         } else if (isGt9 && (cIdx === 1 || cIdx === 5)) {
-          ctx.fillStyle = '#047857';
+          ctx.fillStyle = '#27397c';
         } else {
-          ctx.fillStyle = cIdx === 0 ? '#1e40af' : cIdx === 5 ? '#b45309' : '#0f172a';
+          ctx.fillStyle = cIdx === 0 ? '#27397c' : cIdx === 5 ? '#ee642c' : '#0f172a';
         }
         ctx.font = cIdx === 0 || cIdx === 1 || cIdx === 5 ? '700 14px Inter, sans-serif' : '500 14px Inter, sans-serif';
         ctx.textAlign = cIdx === 1 ? 'left' : 'center';
@@ -3278,7 +3271,7 @@
     if (!container) return;
     const item = document.createElement('div');
     item.className = 'toast-item';
-    item.innerHTML = `<span style="width:7px; height:7px; border-radius:50%; background:#38bdf8;"></span><span>${escapeHtml(msg)}</span>`;
+    item.innerHTML = `<span style="width:7px; height:7px; border-radius:50%; background:#ee642c;"></span><span>${escapeHtml(msg)}</span>`;
     container.appendChild(item);
     setTimeout(() => {
       item.style.opacity = '0';
