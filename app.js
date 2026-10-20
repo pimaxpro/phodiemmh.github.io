@@ -950,6 +950,170 @@
     ctx.fill();
   }
 
+  let sharedMeasureCtx = null;
+  function getSharedMeasureCtx() {
+    if (!sharedMeasureCtx) {
+      sharedMeasureCtx = document.createElement('canvas').getContext('2d');
+    }
+    return sharedMeasureCtx;
+  }
+
+  function createSvgChartContext(canvas, width, height) {
+    const parent = canvas.parentElement;
+    canvas.style.display = 'none';
+    let svg = parent.querySelector('svg.thpt-vector-svg');
+    if (!svg) {
+      svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.setAttribute('class', 'thpt-vector-svg');
+      svg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+      parent.insertBefore(svg, canvas);
+    }
+    svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+    svg.setAttribute('width', '100%');
+    svg.setAttribute('height', '100%');
+
+    const elements = [];
+    let currentPath = [];
+    const stateStack = [];
+    let st = {
+      fillStyle: '#000000',
+      strokeStyle: '#000000',
+      lineWidth: 1,
+      lineJoin: 'miter',
+      lineCap: 'butt',
+      globalAlpha: 1,
+      font: '12px Inter, sans-serif',
+      textAlign: 'left',
+      textBaseline: 'alphabetic',
+      lineDash: [],
+      transforms: [],
+    };
+
+    const fmtN = (n) => Math.round(n * 100) / 100;
+
+    function buildTransformAttr() {
+      if (!st.transforms.length) return '';
+      return ` transform="${st.transforms.join(' ')}"`;
+    }
+
+    function buildAlphaAttr() {
+      if (st.globalAlpha >= 0.999) return '';
+      return ` opacity="${fmtN(st.globalAlpha)}"`;
+    }
+
+    return {
+      get fillStyle() { return st.fillStyle; },
+      set fillStyle(v) { st.fillStyle = v; },
+      get strokeStyle() { return st.strokeStyle; },
+      set strokeStyle(v) { st.strokeStyle = v; },
+      get lineWidth() { return st.lineWidth; },
+      set lineWidth(v) { st.lineWidth = v; },
+      get lineJoin() { return st.lineJoin; },
+      set lineJoin(v) { st.lineJoin = v; },
+      get lineCap() { return st.lineCap; },
+      set lineCap(v) { st.lineCap = v; },
+      get globalAlpha() { return st.globalAlpha; },
+      set globalAlpha(v) { st.globalAlpha = v; },
+      get font() { return st.font; },
+      set font(v) { st.font = v; },
+      get textAlign() { return st.textAlign; },
+      set textAlign(v) { st.textAlign = v; },
+      get textBaseline() { return st.textBaseline; },
+      set textBaseline(v) { st.textBaseline = v; },
+
+      save() {
+        stateStack.push({
+          ...st,
+          lineDash: st.lineDash.slice(),
+          transforms: st.transforms.slice(),
+        });
+      },
+      restore() {
+        if (stateStack.length > 0) {
+          st = stateStack.pop();
+        }
+      },
+      scale(sx, sy) {
+        if (Math.abs(sx - 1) > 1e-4 || Math.abs(sy - 1) > 1e-4) {
+          st.transforms.push(`scale(${fmtN(sx)}, ${fmtN(sy)})`);
+        }
+      },
+      translate(tx, ty) {
+        st.transforms.push(`translate(${fmtN(tx)}, ${fmtN(ty)})`);
+      },
+      rotate(rad) {
+        const deg = (rad * 180) / Math.PI;
+        st.transforms.push(`rotate(${fmtN(deg)})`);
+      },
+      setLineDash(arr) {
+        st.lineDash = Array.isArray(arr) ? arr.slice() : [];
+      },
+      beginPath() {
+        currentPath = [];
+      },
+      moveTo(x, y) {
+        currentPath.push(`M ${fmtN(x)} ${fmtN(y)}`);
+      },
+      lineTo(x, y) {
+        currentPath.push(`L ${fmtN(x)} ${fmtN(y)}`);
+      },
+      quadraticCurveTo(cpx, cpy, x, y) {
+        currentPath.push(`Q ${fmtN(cpx)} ${fmtN(cpy)} ${fmtN(x)} ${fmtN(y)}`);
+      },
+      closePath() {
+        currentPath.push('Z');
+      },
+      fill() {
+        if (!currentPath.length) return;
+        elements.push(
+          `<path d="${currentPath.join(' ')}" fill="${escapeHtml(st.fillStyle)}"${buildAlphaAttr()}${buildTransformAttr()}/>`
+        );
+      },
+      stroke() {
+        if (!currentPath.length) return;
+        const dashAttr = st.lineDash.length ? ` stroke-dasharray="${st.lineDash.join(',')}"` : '';
+        const capAttr = st.lineCap !== 'butt' ? ` stroke-linecap="${st.lineCap}"` : '';
+        const joinAttr = st.lineJoin !== 'miter' ? ` stroke-linejoin="${st.lineJoin}"` : '';
+        elements.push(
+          `<path d="${currentPath.join(' ')}" fill="none" stroke="${escapeHtml(st.strokeStyle)}" stroke-width="${fmtN(st.lineWidth)}"${dashAttr}${capAttr}${joinAttr}${buildAlphaAttr()}${buildTransformAttr()}/>`
+        );
+      },
+      fillRect(x, y, w, h) {
+        elements.push(
+          `<rect x="${fmtN(x)}" y="${fmtN(y)}" width="${fmtN(w)}" height="${fmtN(h)}" fill="${escapeHtml(st.fillStyle)}"${buildAlphaAttr()}${buildTransformAttr()}/>`
+        );
+      },
+      strokeRect(x, y, w, h) {
+        const dashAttr = st.lineDash.length ? ` stroke-dasharray="${st.lineDash.join(',')}"` : '';
+        elements.push(
+          `<rect x="${fmtN(x)}" y="${fmtN(y)}" width="${fmtN(w)}" height="${fmtN(h)}" fill="none" stroke="${escapeHtml(st.strokeStyle)}" stroke-width="${fmtN(st.lineWidth)}"${dashAttr}${buildAlphaAttr()}${buildTransformAttr()}/>`
+        );
+      },
+      fillText(text, x, y) {
+        let anchor = 'start';
+        if (st.textAlign === 'center') anchor = 'middle';
+        else if (st.textAlign === 'right' || st.textAlign === 'end') anchor = 'end';
+
+        let dyAttr = '';
+        if (st.textBaseline === 'middle') dyAttr = ' dy="0.35em"';
+        else if (st.textBaseline === 'bottom') dyAttr = ' dy="-0.12em"';
+        else if (st.textBaseline === 'top') dyAttr = ' dy="0.85em"';
+
+        elements.push(
+          `<text x="${fmtN(x)}" y="${fmtN(y)}" fill="${escapeHtml(st.fillStyle)}" text-anchor="${anchor}"${dyAttr} style="font: ${escapeHtml(st.font)}; user-select: none;"${buildAlphaAttr()}${buildTransformAttr()}>${escapeHtml(text)}</text>`
+        );
+      },
+      measureText(text) {
+        const mCtx = getSharedMeasureCtx();
+        mCtx.font = st.font;
+        return mCtx.measureText(text);
+      },
+      commitSvg() {
+        svg.innerHTML = elements.join('');
+      },
+    };
+  }
+
   function triggerChartAnimation(stats) {
     if (state.chartAnimFrameId) cancelAnimationFrame(state.chartAnimFrameId);
     const startTime = performance.now();
@@ -968,16 +1132,18 @@
 
   function drawTHPTChartOnCanvas(canvas, stats, animProgress = 1, hoverIndex = -1, customDims = null) {
     if (!canvas || !stats) return;
-    const dpr = customDims ? customDims.scale : window.devicePixelRatio || 1;
+    const dpr = customDims ? customDims.scale : 1;
     const width = customDims ? customDims.width : canvas.parentElement.clientWidth || 760;
     const height = customDims ? customDims.height : canvas.parentElement.clientHeight || 410;
 
-    if (canvas.width !== Math.round(width * dpr) || canvas.height !== Math.round(height * dpr)) {
-      canvas.width = Math.round(width * dpr);
-      canvas.height = Math.round(height * dpr);
+    if (customDims) {
+      if (canvas.width !== Math.round(width * dpr) || canvas.height !== Math.round(height * dpr)) {
+        canvas.width = Math.round(width * dpr);
+        canvas.height = Math.round(height * dpr);
+      }
     }
 
-    const ctx = canvas.getContext('2d');
+    const ctx = customDims ? canvas.getContext('2d') : createSvgChartContext(canvas, width, height);
     ctx.save();
     ctx.scale(dpr, dpr);
 
@@ -1199,6 +1365,7 @@
     }
 
     ctx.restore();
+    if (ctx.commitSvg) ctx.commitSvg();
   }
 
   function computeTrendCurvePoints(bins, padLeft, plotW, padTop, plotH, niceMax, binStep) {
@@ -1265,11 +1432,14 @@
 
   function setupMainChartInteractivity() {
     const canvas = document.getElementById('phoDiemCanvas');
+    const wrap = document.getElementById('mainChartWrap') || canvas?.parentElement;
     const tooltip = document.getElementById('chartTooltip');
-    if (!canvas || !tooltip) return;
+    if (!canvas || !wrap || !tooltip) return;
 
-    canvas.addEventListener('mousemove', (e) => {
-      const rect = canvas.getBoundingClientRect();
+    let lastHoverIndex = -1;
+
+    wrap.addEventListener('mousemove', (e) => {
+      const rect = wrap.getBoundingClientRect();
       const mx = e.clientX - rect.left;
       const my = e.clientY - rect.top;
 
@@ -1282,35 +1452,41 @@
         }
       }
 
-      const sess = getCurrentSession();
-      const records = getFilteredRecords(sess, state.currentSubject, state.filterTeacher, state.filterGrade);
-      const stats = computeStatistics(records, state.binStep);
+      const newHoverIdx = found ? found.index : -1;
+      if (newHoverIdx !== lastHoverIndex) {
+        lastHoverIndex = newHoverIdx;
+        const sess = getCurrentSession();
+        const records = getFilteredRecords(sess, state.currentSubject, state.filterTeacher, state.filterGrade);
+        const stats = computeStatistics(records, state.binStep);
+        drawTHPTChartOnCanvas(canvas, stats, 1, newHoverIdx);
+      }
 
       if (found) {
-        canvas.style.cursor = 'pointer';
-        drawTHPTChartOnCanvas(canvas, stats, 1, found.index);
+        wrap.style.cursor = 'pointer';
         tooltip.classList.add('visible');
         tooltip.style.left = `${found.barX}px`;
         tooltip.style.top = `${Math.max(42, found.barTopY)}px`;
         tooltip.innerHTML = `<div style="font-weight:800; color:#fbd5c4;">Khoảng điểm ${found.bin.label}</div><div>Số lượng: <b>${fmtInt(found.bin.count)} TS</b> (${fmtFixed(found.bin.pct, 1)}%)</div><div style="font-size:11px; color:#ee642c; margin-top:3px;">👆 Bấm vào cột để xem danh sách HS</div>`;
       } else {
-        canvas.style.cursor = 'default';
-        drawTHPTChartOnCanvas(canvas, stats, 1, -1);
+        wrap.style.cursor = 'default';
         tooltip.classList.remove('visible');
       }
     });
 
-    canvas.addEventListener('mouseleave', () => {
-      canvas.style.cursor = 'default';
+    wrap.addEventListener('mouseleave', () => {
+      wrap.style.cursor = 'default';
       tooltip.classList.remove('visible');
-      const sess = getCurrentSession();
-      const records = getFilteredRecords(sess, state.currentSubject, state.filterTeacher, state.filterGrade);
-      const stats = computeStatistics(records, state.binStep);
-      drawTHPTChartOnCanvas(canvas, stats, 1, -1);
+      if (lastHoverIndex !== -1) {
+        lastHoverIndex = -1;
+        const sess = getCurrentSession();
+        const records = getFilteredRecords(sess, state.currentSubject, state.filterTeacher, state.filterGrade);
+        const stats = computeStatistics(records, state.binStep);
+        drawTHPTChartOnCanvas(canvas, stats, 1, -1);
+      }
     });
 
-    canvas.addEventListener('click', (e) => {
-      const rect = canvas.getBoundingClientRect();
+    wrap.addEventListener('click', (e) => {
+      const rect = wrap.getBoundingClientRect();
       const mx = e.clientX - rect.left;
       const my = e.clientY - rect.top;
 
@@ -1575,14 +1751,16 @@
 
   function drawMultiSessionOverlayChart(canvas, sessionStatsList, customDims = null) {
     if (!canvas || !sessionStatsList || sessionStatsList.length === 0) return;
-    const dpr = customDims ? customDims.scale : window.devicePixelRatio || 1;
+    const dpr = customDims ? customDims.scale : 1;
     const width = customDims ? customDims.width : canvas.parentElement.clientWidth || 900;
     const height = customDims ? customDims.height : canvas.parentElement.clientHeight || 290;
 
-    canvas.width = Math.round(width * dpr);
-    canvas.height = Math.round(height * dpr);
+    if (customDims) {
+      canvas.width = Math.round(width * dpr);
+      canvas.height = Math.round(height * dpr);
+    }
 
-    const ctx = canvas.getContext('2d');
+    const ctx = customDims ? canvas.getContext('2d') : createSvgChartContext(canvas, width, height);
     ctx.save();
     ctx.scale(dpr, dpr);
 
@@ -1648,7 +1826,7 @@
       const groupStartX = padLeft + bIdx * slotW + (slotW - groupW) / 2;
       sessionStatsList.forEach((item, sIdx) => {
         const bin = item.stats.bins[bIdx];
-        const barH = (bin.pct / niceMaxPct) * plotH * state.chartAnimProgress;
+        const barH = (bin.pct / niceMaxPct) * plotH;
         const x = groupStartX + sIdx * singleBarW;
         const y = padTop + plotH - barH;
         ctx.fillStyle = palette[sIdx % palette.length];
@@ -1668,6 +1846,7 @@
     }
 
     ctx.restore();
+    if (ctx.commitSvg) ctx.commitSvg();
   }
 
   // ============================================================================
@@ -1809,14 +1988,16 @@
 
   function drawTeacherGradeCompareChart(canvas, items, customDims = null) {
     if (!canvas || !items || items.length === 0) return;
-    const dpr = customDims ? customDims.scale : window.devicePixelRatio || 1;
+    const dpr = customDims ? customDims.scale : 1;
     const width = customDims ? customDims.width : canvas.parentElement.clientWidth || 860;
     const height = customDims ? customDims.height : canvas.parentElement.clientHeight || 295;
 
-    canvas.width = Math.round(width * dpr);
-    canvas.height = Math.round(height * dpr);
+    if (customDims) {
+      canvas.width = Math.round(width * dpr);
+      canvas.height = Math.round(height * dpr);
+    }
 
-    const ctx = canvas.getContext('2d');
+    const ctx = customDims ? canvas.getContext('2d') : createSvgChartContext(canvas, width, height);
     ctx.save();
     ctx.scale(dpr, dpr);
 
@@ -1869,7 +2050,7 @@
       const gx = padLeft + idx * slotW + (slotW - groupW) / 2;
 
       // Bar 1: Teacher's Grade Mean (Solid Navy #27397c)
-      const hMean = (it.mean / 10) * plotH * state.chartAnimProgress;
+      const hMean = (it.mean / 10) * plotH;
       const yMean = padTop + plotH - hMean;
       ctx.fillStyle = '#27397c';
       drawRoundedTopRect(ctx, gx, yMean, barW - 2, hMean, 5);
@@ -1880,7 +2061,7 @@
       ctx.fillText(fmtFixed(it.mean, 2), gx + barW / 2 - 1, yMean - 6);
 
       // Bar 2: Whole Group's Grade Mean (Solid Orange #ee642c)
-      const hGroup = (it.groupMean / 10) * plotH * state.chartAnimProgress;
+      const hGroup = (it.groupMean / 10) * plotH;
       const yGroup = padTop + plotH - hGroup;
       ctx.fillStyle = '#ee642c';
       drawRoundedTopRect(ctx, gx + barW, yGroup, barW - 2, hGroup, 5);
@@ -1909,6 +2090,7 @@
     });
 
     ctx.restore();
+    if (ctx.commitSvg) ctx.commitSvg();
   }
 
   function renderGradeSummarySubView(subjRecords) {
