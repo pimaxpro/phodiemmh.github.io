@@ -536,6 +536,12 @@
     return allRows;
   }
 
+  function cleanSessionLabel(raw) {
+    return String(raw || '')
+      .replace(/\s*\([lL]\d+\.(xlsx|xls|csv)\)/g, '')
+      .trim();
+  }
+
   function upsertAdminSessionFromParsed(num, fileName, parsed) {
     if (!parsed || parsed.totalRecords === 0) return null;
     const id = `admin-L${num}`;
@@ -545,8 +551,8 @@
       fileCode,
       fileName,
       isAdminFile: true,
-      name: `Lần thi ${num} (${fileName})`,
-      shortName: `Lần ${num} (${fileName})`,
+      name: `Lần thi ${num}`,
+      shortName: `Lần ${num}`,
       date: new Date().toLocaleDateString('vi-VN'),
       records: parsed.records,
       subjects: parsed.subjects,
@@ -612,6 +618,14 @@
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
+          parsed.forEach((s, idx) => {
+            if (!s.fileName) {
+              const m = String(s.shortName || s.name || '').match(/\(([lL]\d+\.[a-zA-Z0-9]+)\)/);
+              s.fileName = m ? m[1] : `L${idx + 1}.xlsx`;
+            }
+            s.name = cleanSessionLabel(s.name);
+            s.shortName = cleanSessionLabel(s.shortName);
+          });
           state.sessions = sortSessionsByOrder(parsed);
           state.currentSessionId = state.sessions[0].id;
           state.currentSubject = state.sessions[0].subjects[0] || 'Toán THPT';
@@ -638,8 +652,8 @@
         fileCode: s.fileCode || `L${idx + 1}`,
         fileName: s.fileName || `L${idx + 1}.xlsx`,
         isAdminFile: true,
-        name: s.name,
-        shortName: s.shortName,
+        name: cleanSessionLabel(s.name) || `Lần thi ${idx + 1}`,
+        shortName: cleanSessionLabel(s.shortName) || `Lần ${idx + 1}`,
         date: s.date,
         records: parsed.records,
         subjects: parsed.subjects,
@@ -877,7 +891,7 @@
     const teacherLabel = state.filterTeacher !== 'ALL' ? ` • GV ${state.filterTeacher}` : ' • Cả nhóm';
 
     document.getElementById('thptSubBannerText').textContent =
-      `${state.currentSubject.toUpperCase()} — KHỐI ${state.filterGrade}${teacherLabel.toUpperCase()} (${sess.shortName.toUpperCase()})`;
+      `${state.currentSubject.toUpperCase()} — KHỐI ${state.filterGrade}${teacherLabel.toUpperCase()}`;
 
     document.getElementById('thptCenterTag').textContent =
       `${state.centerName}`;
@@ -993,7 +1007,7 @@
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
     ctx.fillText(
-      `Phân bố điểm Môn ${subjText} — Khối ${gradeText}${teacherText} (${sess ? sess.shortName : ''})`,
+      `Phân bố điểm Môn ${subjText} — Khối ${gradeText}${teacherText}`,
       padLeft,
       isCompactMobile ? 14 : 18
     );
@@ -1381,7 +1395,9 @@
   }
 
   function buildTeacherSummaryBadgesHtml(students) {
-    if (!students || students.length === 0) return '';
+    if (!students || students.length === 0) {
+      return `<span class="mini-stat-chip" style="opacity:0.65;"><i class="fa-solid fa-chalkboard-user"></i> Không có học sinh trong cột điểm này</span>`;
+    }
     const map = new Map();
     students.forEach((s) => {
       const t = s.teacher || 'Chưa rõ';
@@ -1474,7 +1490,7 @@
       `<i class="fa-solid fa-users-viewfinder" style="color:#27397c; margin-right:6px;"></i>CỘT ĐIỂM <span style="color:#ee642c;">${escapeHtml(bin.shortLabel)}</span> <span style="font-size:13px; color:#475569;">(${escapeHtml(bin.label)})</span>`;
 
     document.getElementById('binModalSubtitle').innerHTML =
-      `<b>${escapeHtml(subject)}</b> • Khối <b>${escapeHtml(String(grade))}</b>${escapeHtml(teacherLabel)} (${escapeHtml(session?.shortName || '')}) • <b style="color:#ee642c;">${fmtInt(bin.count)} TS</b> (${fmtFixed(bin.pct, 1)}%)`;
+      `<b>${escapeHtml(subject)}</b> • Khối <b>${escapeHtml(String(grade))}</b>${escapeHtml(teacherLabel)} • <b style="color:#ee642c;">${fmtInt(bin.count)} TS</b> (${fmtFixed(bin.pct, 1)}%)`;
 
     // Render quick switcher pills for all columns
     const switcher = document.getElementById('binModalQuickSwitcher');
@@ -2439,6 +2455,40 @@
       .replace(/^_+|_+$/g, '');
   }
 
+  function drawExportWatermarkFooter(ctx, baseW, baseH, session) {
+    const now = new Date();
+    const dd = String(now.getDate()).padStart(2, '0');
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const yyyy = now.getFullYear();
+    const downloadDateStr = `${dd}/${mm}/${yyyy}`;
+
+    const sessObj = session || getCurrentSession();
+    const examLabel = cleanSessionLabel(sessObj?.shortName || sessObj?.name || 'Lần 1');
+    const origFile = sessObj?.fileName || `${sessObj?.fileCode || 'L1'}.xlsx`;
+
+    const footerY = baseH - 18;
+
+    // Bottom-left: Thực hiện bởi Minh Tuấn
+    ctx.save();
+    ctx.fillStyle = 'rgba(39, 57, 124, 0.58)';
+    ctx.font = '600 13.5px Inter, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('Thực hiện bởi Minh Tuấn', 40, footerY);
+
+    // Bottom-right: Lần thi + Tên file dữ liệu gốc + Ngày tải xuống
+    ctx.fillStyle = 'rgba(71, 85, 105, 0.65)';
+    ctx.font = '500 13px Inter, sans-serif';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(
+      `Đợt thi: ${examLabel}  •  File dữ liệu gốc: ${origFile}  •  Tải xuống ngày: ${downloadDateStr}`,
+      baseW - 40,
+      footerY
+    );
+    ctx.restore();
+  }
+
   function exportHighResPhoDiemCard(session, subject, teacherFilter = 'ALL', gradeFilter = null) {
     const { scale, format } = getExportSettings();
     const targetGrade = gradeFilter || state.filterGrade;
@@ -2449,7 +2499,7 @@
     const filenameBase = `Pho_Diem_${slugify(subject)}_Khoi_${slugify(targetGrade)}_${slugify(session.shortName)}`;
 
     const baseW = 1400;
-    const baseH = 700;
+    const baseH = 716;
     const offCanvas = document.createElement('canvas');
     offCanvas.width = baseW * scale;
     offCanvas.height = baseH * scale;
@@ -2465,7 +2515,7 @@
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
     ctx.fillText(
-      `PHỔ ĐIỂM MÔN ${subject.toUpperCase()} — KHỐI ${String(targetGrade).toUpperCase()}${teacherSuffix.toUpperCase()} (${session.shortName.toUpperCase()})`,
+      `PHỔ ĐIỂM MÔN ${subject.toUpperCase()} — KHỐI ${String(targetGrade).toUpperCase()}${teacherSuffix.toUpperCase()}`,
       40,
       30
     );
@@ -2550,6 +2600,7 @@
       }
     });
 
+    drawExportWatermarkFooter(ctx, baseW, baseH, session);
     ctx.restore();
     triggerCanvasDownload(offCanvas, filenameBase, format === 'svg' ? 'png' : format);
     showToast(`Đã tải ảnh phổ điểm ${subject} - Khối ${targetGrade} (${scale}K)`);
@@ -2654,12 +2705,13 @@
       });
     });
 
-    const chartY = ty + 42 + metricRows.length * rowH + 24;
-    const chartH = baseH - chartY - 26;
+    const chartY = ty + 42 + metricRows.length * rowH + 20;
+    const chartH = baseH - chartY - 40;
     const subCanvas = document.createElement('canvas');
     drawMultiSessionOverlayChart(subCanvas, sessionStatsList, { width: tw, height: chartH, scale });
     ctx.drawImage(subCanvas, 0, 0, tw * scale, chartH * scale, tx, chartY, tw, chartH);
 
+    drawExportWatermarkFooter(ctx, baseW, baseH, getCurrentSession());
     ctx.restore();
     triggerCanvasDownload(canvas, `So_Sanh_Cac_Lan_Thi_${slugify(subj)}_Khoi_${grade}`, format === 'svg' ? 'png' : format);
     showToast(`Đã tải ảnh So sánh các lần thi Khối ${grade} (${scale}K)`);
@@ -2679,7 +2731,7 @@
     const ctx = canvas.getContext('2d');
 
     if (state.groupStatMode === 'grade_summary') {
-      baseH = 170 + allGrades.length * 44 + 40;
+      baseH = 170 + allGrades.length * 44 + 54;
       canvas.width = baseW * scale;
       canvas.height = baseH * scale;
       ctx.save();
@@ -2719,6 +2771,7 @@
         rightRows
       );
 
+      drawExportWatermarkFooter(ctx, baseW, baseH, sess);
       ctx.restore();
       triggerCanvasDownload(canvas, `Thong_Ke_Khoi_${slugify(subj)}`, format === 'svg' ? 'png' : format);
       showToast(`Đã tải ảnh Thống kê theo Khối (${scale}K)`);
@@ -2730,7 +2783,7 @@
     tables.forEach((t) => {
       totalRows += t.querySelectorAll('tbody tr').length + 2;
     });
-    baseH = 100 + totalRows * 40 + 40;
+    baseH = 100 + totalRows * 40 + 54;
     canvas.width = baseW * scale;
     canvas.height = baseH * scale;
     ctx.save();
@@ -2771,6 +2824,7 @@
       curY += 24;
     });
 
+    drawExportWatermarkFooter(ctx, baseW, baseH, sess);
     ctx.restore();
     triggerCanvasDownload(canvas, `So_Sanh_GV_Theo_Khoi_${slugify(subj)}`, format === 'svg' ? 'png' : format);
     showToast(`Đã tải ảnh So sánh GV theo Khối (${scale}K)`);
@@ -2833,7 +2887,7 @@
 
     const rowH = 38;
     const baseW = 1360;
-    const baseH = 140 + Math.max(list.length, 1) * rowH + 36;
+    const baseH = 140 + Math.max(list.length, 1) * rowH + 52;
 
     const canvas = document.createElement('canvas');
     canvas.width = baseW * scale;
@@ -2855,12 +2909,8 @@
       26
     );
 
-    ctx.fillStyle = '#475569';
-    ctx.font = '600 15px Inter, sans-serif';
-    ctx.fillText(sess.name, 40, 58);
-
     const tx = 40;
-    const ty = 92;
+    const ty = 74;
     const colWidths = [70, 390, 110, 170, 220, 150, 170];
     const headers = ['HẠNG', 'HỌC SINH', 'KHỐI', 'BỘ MÔN', 'GIÁO VIÊN', 'NGÀY THI', 'ĐIỂM / TT'];
 
@@ -2921,6 +2971,7 @@
       });
     });
 
+    drawExportWatermarkFooter(ctx, baseW, baseH, sess);
     ctx.restore();
     const filePrefix = topN > 0 ? `Top_${topN}` : `Bang_Diem_${state.studentStatusFilter}`;
     triggerCanvasDownload(canvas, `${filePrefix}_${slugify(subj)}_Khoi_${grade}`, format === 'svg' ? 'png' : format);
@@ -3060,14 +3111,16 @@
           const sessObj = upsertAdminSessionFromParsed(examNum, file.name, parsed);
           if (sessObj) {
             lastAddedSession = sessObj;
-            importedNames.push(`Lần thi ${examNum} (${file.name})`);
+            importedNames.push(`Lần thi ${examNum}`);
           }
         } else {
           const nextNum = state.sessions.length + 1;
           const newSess = {
             id: 'sess-' + Date.now() + '-' + i,
-            name: `Lần thi ${nextNum} (${file.name})`,
-            shortName: `Lần ${nextNum} (${file.name})`,
+            name: `Lần thi ${nextNum}`,
+            shortName: `Lần ${nextNum}`,
+            fileName: file.name,
+            examOrder: nextNum,
             date: new Date().toLocaleDateString('vi-VN'),
             records: parsed.records,
             subjects: parsed.subjects,
@@ -3104,6 +3157,7 @@
     }
 
     state.pendingUploadRows = parsed;
+    state.pendingUploadFileName = filename;
     const absentCnt = parsed.records.filter((r) => r.absent).length;
 
     document.getElementById('uploadFileSummaryBox').innerHTML = `
@@ -3123,7 +3177,7 @@
     }
 
     const nextIdx = state.sessions.length + 1;
-    document.getElementById('newSessionNameInput').value = `Lần ${nextIdx} (${new Date().toLocaleDateString('vi-VN')})`;
+    document.getElementById('newSessionNameInput').value = `Lần thi ${nextIdx}`;
     document.getElementById('newSessionShortInput').value = `Lần ${nextIdx}`;
     document.getElementById('uploadSessionModal').classList.add('open');
   }
@@ -3146,15 +3200,19 @@
       if (cur) {
         cur.records = finalRecords;
         cur.subjects = parsed.subjects;
+        if (state.pendingUploadFileName) cur.fileName = state.pendingUploadFileName;
         showToast(`Đã cập nhật "${cur.name}"`);
       }
     } else {
-      const name = document.getElementById('newSessionNameInput').value.trim() || `Lần ${state.sessions.length + 1}`;
-      const shortName = document.getElementById('newSessionShortInput').value.trim() || name;
+      const nextOrder = state.sessions.length + 1;
+      const name = cleanSessionLabel(document.getElementById('newSessionNameInput').value.trim()) || `Lần thi ${nextOrder}`;
+      const shortName = cleanSessionLabel(document.getElementById('newSessionShortInput').value.trim()) || `Lần ${nextOrder}`;
       const newSess = {
         id: 'sess-' + Date.now(),
         name,
         shortName,
+        fileName: state.pendingUploadFileName || '',
+        examOrder: nextOrder,
         date: todayStr,
         records: finalRecords,
         subjects: parsed.subjects,
