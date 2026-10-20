@@ -774,6 +774,9 @@
         <span class="subj-badge">K${grades.join(', ')}</span>
       `;
       btn.addEventListener('click', () => {
+        if (window.innerWidth <= 960) {
+          document.body.classList.remove('sidebar-mobile-open');
+        }
         if (state.currentSubject !== subj) {
           state.currentSubject = subj;
           state.filterTeacher = 'ALL';
@@ -955,10 +958,11 @@
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, width, height);
 
-    const padTop = 52;
-    const padBottom = 60;
-    const padLeft = 48;
-    const padRight = 20;
+    const isCompactMobile = !customDims && width < 580;
+    const padTop = isCompactMobile ? 62 : 52;
+    const padBottom = isCompactMobile ? 50 : 60;
+    const padLeft = isCompactMobile ? 32 : 48;
+    const padRight = isCompactMobile ? 10 : 20;
     const plotW = width - padLeft - padRight;
     const plotH = height - padTop - padBottom;
 
@@ -972,34 +976,50 @@
         : '';
 
     ctx.fillStyle = '#0f172a';
-    ctx.font = '800 14.5px Inter, sans-serif';
+    ctx.font = isCompactMobile ? '800 12px Inter, sans-serif' : '800 14.5px Inter, sans-serif';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
     ctx.fillText(
       `Phân bố điểm Môn ${subjText} — Khối ${gradeText}${teacherText} (${sess ? sess.shortName : ''})`,
       padLeft,
-      18
+      isCompactMobile ? 14 : 18
     );
 
-    // Color legend pills at top right
+    // Color legend pills
     const legendItems = [
       { label: 'Dưới TB (<5)', color: '#f59e0b' },
       { label: 'Đạt / Khá (5–8)', color: '#2563eb' },
       { label: 'Giỏi (8–10)', color: '#10b981' },
     ];
-    let lx = width - padRight;
-    for (let i = legendItems.length - 1; i >= 0; i--) {
-      const item = legendItems[i];
-      ctx.font = '600 11px Inter, sans-serif';
-      const tw = ctx.measureText(item.label).width;
-      lx -= tw;
-      ctx.fillStyle = '#475569';
-      ctx.textAlign = 'left';
-      ctx.fillText(item.label, lx, 18);
-      lx -= 14;
-      ctx.fillStyle = item.color;
-      drawRoundedBadge(ctx, lx, 13, 10, 10, 3);
-      lx -= 14;
+    if (isCompactMobile) {
+      let lx = padLeft;
+      const ly = 34;
+      for (let i = 0; i < legendItems.length; i++) {
+        const item = legendItems[i];
+        ctx.fillStyle = item.color;
+        drawRoundedBadge(ctx, lx, ly - 4.5, 9, 9, 2.5);
+        lx += 12;
+        ctx.font = '600 10px Inter, sans-serif';
+        ctx.fillStyle = '#475569';
+        ctx.textAlign = 'left';
+        ctx.fillText(item.label, lx, ly);
+        lx += ctx.measureText(item.label).width + 12;
+      }
+    } else {
+      let lx = width - padRight;
+      for (let i = legendItems.length - 1; i >= 0; i--) {
+        const item = legendItems[i];
+        ctx.font = '600 11px Inter, sans-serif';
+        const tw = ctx.measureText(item.label).width;
+        lx -= tw;
+        ctx.fillStyle = '#475569';
+        ctx.textAlign = 'left';
+        ctx.fillText(item.label, lx, 18);
+        lx -= 14;
+        ctx.fillStyle = item.color;
+        drawRoundedBadge(ctx, lx, 13, 10, 10, 3);
+        lx -= 14;
+      }
     }
 
     const rawMax = Math.max(stats.maxBinCount, 1);
@@ -3355,8 +3375,48 @@
       refreshAllUI(false);
     });
 
+    function syncSidebarToggleLabel() {
+      const txtEl = document.getElementById('toggleSidebarBtnText');
+      if (!txtEl) return;
+      if (window.innerWidth <= 960) {
+        txtEl.textContent = 'Menu';
+      } else {
+        const isCollapsed = document.body.classList.contains('sidebar-collapsed');
+        txtEl.textContent = isCollapsed ? 'Hiện menu' : 'Ẩn menu';
+      }
+    }
+
+    function toggleSidebar() {
+      if (window.innerWidth <= 960) {
+        document.body.classList.toggle('sidebar-mobile-open');
+      } else {
+        document.body.classList.toggle('sidebar-collapsed');
+        setTimeout(() => refreshAllUI(false), 250);
+      }
+      syncSidebarToggleLabel();
+    }
+
+    document.getElementById('btnToggleSidebar')?.addEventListener('click', toggleSidebar);
+    document.getElementById('btnCloseSidebar')?.addEventListener('click', () => {
+      if (window.innerWidth <= 960) {
+        document.body.classList.remove('sidebar-mobile-open');
+      } else {
+        document.body.classList.add('sidebar-collapsed');
+        setTimeout(() => refreshAllUI(false), 250);
+      }
+      syncSidebarToggleLabel();
+    });
+    document.getElementById('sidebarBackdrop')?.addEventListener('click', () => {
+      document.body.classList.remove('sidebar-mobile-open');
+      syncSidebarToggleLabel();
+    });
+    syncSidebarToggleLabel();
+
     document.querySelectorAll('#viewModeTabs .view-mode-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
+        if (window.innerWidth <= 960) {
+          document.body.classList.remove('sidebar-mobile-open');
+        }
         document.querySelectorAll('#viewModeTabs .view-mode-btn').forEach((b) => b.classList.remove('active'));
         btn.classList.add('active');
         state.viewMode = btn.getAttribute('data-view') || 'all';
@@ -3429,7 +3489,10 @@
     document.getElementById('btnBatchExportAll')?.addEventListener('click', batchExportAllSubjects);
     document.getElementById('btnBatchExportFromGrid')?.addEventListener('click', batchExportAllSubjects);
 
-    window.addEventListener('resize', () => refreshAllUI(false));
+    window.addEventListener('resize', () => {
+      syncSidebarToggleLabel();
+      refreshAllUI(false);
+    });
     setupMainChartInteractivity();
   }
 
