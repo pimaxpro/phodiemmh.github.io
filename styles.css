@@ -67,6 +67,21 @@ body {
 /* ==========================================================================
    FIXED LEFT SIDEBAR (Never scrolls with page)
    ========================================================================== */
+.sidebar-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.5);
+  z-index: 490;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.22s ease;
+}
+
+body.sidebar-mobile-open .sidebar-backdrop {
+  opacity: 1;
+  pointer-events: auto;
+}
+
 .app-sidebar {
   position: fixed;
   top: 0;
@@ -79,16 +94,41 @@ body {
   display: flex;
   flex-direction: column;
   box-shadow: 4px 0 24px rgba(15, 23, 42, 0.04);
+  transition: transform 0.24s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+body.sidebar-collapsed .app-sidebar {
+  transform: translateX(-100%);
 }
 
 .sidebar-brand {
   background: #0f172a;
   color: #ffffff;
-  padding: 16px;
+  padding: 14px 14px;
   display: flex;
   align-items: center;
-  gap: 11px;
+  gap: 10px;
   flex-shrink: 0;
+}
+
+.sidebar-collapse-btn {
+  margin-left: auto;
+  width: 30px;
+  height: 30px;
+  border-radius: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s ease;
+}
+
+.sidebar-collapse-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
 }
 
 .brand-logo {
@@ -286,6 +326,12 @@ body {
   flex-direction: column;
   gap: 14px;
   max-width: calc(100vw - var(--sidebar-width));
+  transition: margin-left 0.24s cubic-bezier(0.4, 0, 0.2, 1), max-width 0.24s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+body.sidebar-collapsed .main-wrapper {
+  margin-left: 0;
+  max-width: 100vw;
 }
 
 .top-command-bar {
@@ -1076,4 +1122,171 @@ body {
   align-items: center;
   gap: 8px;
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+}
+
+/* ==========================================================================
+   MOBILE & TABLET RESPONSIVE DESIGN
+   ========================================================================== */
+@media (max-width: 960px) {
+  .app-sidebar {
+    transform: translateX(-100%);
+    width: 270px;
+    box-shadow: 8px 0 32px rgba(15, 23, 42, 0.22);
+  }
+
+  body.sidebar-mobile-open .app-sidebar {
+    transform: translateX(0);
+  }
+
+  .main-wrapper,
+  body.sidebar-collapsed .main-wrapper {
+    margin-left: 0;
+    max-width: 100vw;
+    padding: 12px 12px 48px;
+    gap: 12px;
+  }
+
+  .quick-filter-banner {
+    position: static;
+    padding: 10px 12px;
+  }
+}
+
+@media (max-width: 640px) {
+  .main-wrapper {
+    padding: 8px 8px 40px;
+    gap: 10px;
+  }
+
+  .top-command-bar {
+    padding: 10px 12px;
+    gap: 10px;
+  }
+
+  .top-session-select {
+    min-width: 0;
+    width: 100%;
+    font-size: 13px;
+  }
+
+  .dropzone-compact {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 10px;
+  }
+
+  .dropzone-compact .btn {
+    width: 100%;
+  }
+
+  .top-cmd-footer {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .top-cmd-footer > div:last-child {
+    margin-left: 0 !important;
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  #centerNameInput {
+    flex: 1;
+    width: auto !important;
+  }
+
+  .filter-pill-group {
+    width: 100%;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    padding-bottom: 4px;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .choice-pill,
+  .filter-group-label {
+    flex-shrink: 0;
+    font-size: 12px;
+    padding: 4px 10px;
+  }
+
+  .report-action-bar {
+    padding: 10px 12px;
+    gap: 8px;
+  }
+
+  .export-controls {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .thpt-capture-stage {
+    padding: 12px 10px;
+  }
+
+  .thpt-sub-banner {
+    font-size: 13.5px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+
+  .thpt-chart-box {
+    padding: 10px 8px 8px;
+    min-height: 330px;
+  }
+
+  .thpt-chart-canvas-wrap {
+    height: 300px;
+  }
+
+  .thpt-stats-table {
+    font-size: 12.5px;
+  }
+
+  .thpt-stats-table td {
+    padding: 6px 9px;
+  }
+
+  .thpt-rank-box {
+    padding: 10px 10px;
+  }
+
+  .thpt-comparison-table,
+  .thpt-rank-table {
+    font-size: 12px;
+  }
+
+  .thpt-comparison-table thead th,
+  .thpt-rank-table thead th,
+  .thpt-rank-table tbody td {
+    padding: 6px 7px;
+  }
+
+  .bin-students-inline-panel {
+    padding: 10px;
+  }
+
+  .modal-backdrop {
+    padding: 8px;
+  }
+
+  .modal-card {
+    padding: 14px 12px;
+    border-radius: 12px;
+  }
+
+  .sub-nav-pills {
+    display: flex;
+    width: 100%;
+    overflow-x: auto;
+  }
+
+  .sub-nav-btn {
+    flex: 1;
+    white-space: nowrap;
+    font-size: 11px;
+    padding: 5px 8px;
+  }
 }
