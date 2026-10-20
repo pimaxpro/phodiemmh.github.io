@@ -78,10 +78,6 @@
             <i class="fa-solid fa-trophy"></i>
             <span>Bảng điểm & Xếp hạng</span>
           </button>
-          <button class="view-mode-btn" data-view="allsubjects">
-            <i class="fa-solid fa-grip"></i>
-            <span>Toàn cảnh các môn</span>
-          </button>
         </div>
       </div>
     </div>
@@ -97,13 +93,8 @@
          ==================================================================== -->
     <section class="top-command-bar card-panel">
       <div class="top-cmd-inline">
-        <!-- Left: Toggle Sidebar + Session Selector -->
+        <!-- Left: Session Selector -->
         <div class="top-cmd-left">
-          <button type="button" class="btn btn-outline btn-sm sidebar-toggle-trigger" id="btnToggleSidebar" title="Ẩn / Hiện menu trái">
-            <i class="fa-solid fa-bars"></i>
-            <span id="toggleSidebarBtnText">Ẩn menu</span>
-          </button>
-
           <div class="top-session-picker">
             <span class="top-cmd-label"><i class="fa-regular fa-calendar-check"></i> Đợt thi:</span>
             <select id="topSessionDropdown" class="top-session-select" title="Chọn lần thi hoặc xem so sánh"></select>
@@ -445,27 +436,6 @@
       <div class="thpt-capture-stage">
         <div id="absentSummaryStrip" style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px;"></div>
         <div id="topStudentsContainer" style="display: flex; flex-direction: column; gap: 14px;"></div>
-      </div>
-    </section>
-
-    <!-- ====================================================================
-         SECTION 6: TOÀN CẢNH TẤT CẢ CÁC MÔN
-         ==================================================================== -->
-    <section id="sectionAllSubjectsOverview" class="thpt-report-wrapper">
-      <div class="report-action-bar">
-        <div class="report-action-title">
-          <i class="fa-solid fa-grip" style="color: #27397c;"></i>
-          <span>Toàn cảnh các môn</span>
-        </div>
-        <div class="export-controls">
-          <button class="btn btn-primary btn-sm" id="btnBatchExportFromGrid">
-            <i class="fa-solid fa-images"></i> Tải bộ ảnh 6K
-          </button>
-        </div>
-      </div>
-
-      <div class="thpt-capture-stage">
-        <div id="allSubjectsGridContainer" class="all-subjects-grid"></div>
       </div>
     </section>
 
