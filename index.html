@@ -25,16 +25,24 @@
     </div>
   </div>
 
+  <!-- Mobile Backdrop for Sidebar Drawer -->
+  <div id="sidebarBackdrop" class="sidebar-backdrop"></div>
+
   <!-- ========================================================================
-       FIXED LEFT SIDEBAR MENU
+       FIXED LEFT SIDEBAR MENU (Collapsible on Desktop & Mobile Drawer)
        ======================================================================== -->
-  <aside class="app-sidebar">
+  <aside class="app-sidebar" id="appSidebar">
     <div class="sidebar-brand">
       <div class="brand-logo">MH</div>
       <div class="brand-text">
         <h1>TRUNG TÂM MINH HOÀNG</h1>
         <span>Hệ thống Phổ điểm Thi</span>
       </div>
+      <button type="button" class="sidebar-collapse-btn" id="btnCloseSidebar" title="Ẩn thanh menu bên trái">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" width="18" height="18">
+          <polyline points="15 18 9 12 15 6"/>
+        </svg>
+      </button>
     </div>
 
     <div class="sidebar-scroll">
@@ -134,12 +142,20 @@
          ==================================================================== -->
     <section class="top-command-bar card-panel">
       <div class="top-cmd-row">
-        <!-- Left: Dropdown chọn Lần thi của Trung tâm (L1, L2, L3...) -->
+        <!-- Left: Toggle Sidebar Button + Dropdown chọn Lần thi -->
         <div class="top-cmd-block top-cmd-session">
-          <div class="top-cmd-label">
-            <span>Chọn dữ liệu thi:</span>
-          </div>
-          <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+          <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+            <button type="button" class="btn btn-outline btn-sm sidebar-toggle-trigger" id="btnToggleSidebar" title="Ẩn / Hiện thanh menu bên trái">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                <line x1="3" y1="6" x2="21" y2="6"/>
+                <line x1="3" y1="12" x2="21" y2="12"/>
+                <line x1="3" y1="18" x2="21" y2="18"/>
+              </svg>
+              <span id="toggleSidebarBtnText">Ẩn menu</span>
+            </button>
+            <div class="top-cmd-label">
+              <span>Chọn dữ liệu thi:</span>
+            </div>
             <select id="topSessionDropdown" class="top-session-select" title="Chọn lần thi hoặc xem so sánh"></select>
             <button type="button" class="btn btn-outline btn-sm" id="btnDeleteCurrentSession" style="display: none; color: #e11d48; border-color: #fecdd3;" title="Xóa lần thi đang chọn">
               Xóa
