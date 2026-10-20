@@ -2929,6 +2929,43 @@
     showToast(`Đã tải ảnh Bảng điểm & Xếp hạng môn ${subj} Khối ${grade} (${scale}K)`);
   }
 
+  function triggerCanvasDownload(canvas, filenameBase, format) {
+    const mime = format === 'jpeg' ? 'image/jpeg' : 'image/png';
+    const ext = format === 'jpeg' ? 'jpg' : 'png';
+    canvas.toBlob((blob) => {
+      if (blob) downloadBlob(blob, `${filenameBase}.${ext}`);
+    }, mime, 1.0);
+  }
+
+  function downloadBlob(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, 300);
+  }
+
+  function batchExportAllSubjects() {
+    const sess = getCurrentSession();
+    if (!sess || !sess.subjects.length) return;
+    const tasks = [];
+    sess.subjects.forEach((subj) => {
+      const selectedG = state.overviewSelectedGrades[subj] || getGradesForSubject(sess, subj)[0];
+      if (selectedG) tasks.push({ subj, grade: selectedG });
+    });
+    showToast(`Đang tải ${tasks.length} ảnh phổ điểm 6K...`);
+    tasks.forEach((t, i) => {
+      setTimeout(() => {
+        exportHighResPhoDiemCard(sess, t.subj, 'ALL', t.grade);
+      }, i * 380);
+    });
+  }
+
   function exportTopStudentsCSV() {
     const sess = getCurrentSession();
     if (!sess) return;
