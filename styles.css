@@ -127,11 +127,33 @@ body.sidebar-collapsed .app-sidebar {
   justify-content: center;
   cursor: pointer;
   flex-shrink: 0;
-  transition: background 0.15s ease;
+  transition: all 0.2s ease;
 }
 
 .sidebar-collapse-btn:hover {
-  background: rgba(255, 255, 255, 0.2);
+  background: #ee642c;
+  border-color: #ee642c;
+}
+
+body.sidebar-collapsed .sidebar-collapse-btn {
+  position: absolute;
+  top: 14px;
+  right: -42px;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  background: #27397c;
+  border: 1px solid #1d2b61;
+  box-shadow: 0 4px 12px rgba(39, 57, 124, 0.25);
+}
+
+body.sidebar-collapsed .sidebar-collapse-btn:hover {
+  background: #ee642c;
+  border-color: #ee642c;
+}
+
+body.sidebar-collapsed .sidebar-collapse-btn i {
+  transform: rotate(180deg);
 }
 
 .brand-logo {
@@ -1482,6 +1504,22 @@ body.sidebar-collapsed .main-wrapper {
 
   body.sidebar-mobile-open .app-sidebar {
     transform: translateX(0);
+  }
+
+  body:not(.sidebar-mobile-open) .sidebar-collapse-btn {
+    position: absolute;
+    top: 12px;
+    right: -42px;
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    background: #27397c;
+    border: 1px solid #1d2b61;
+    box-shadow: 0 4px 12px rgba(39, 57, 124, 0.25);
+  }
+
+  body:not(.sidebar-mobile-open) .sidebar-collapse-btn i {
+    transform: rotate(180deg);
   }
 
   .main-wrapper,
