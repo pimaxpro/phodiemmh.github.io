@@ -1314,24 +1314,58 @@
     });
   }
 
+  function getStudentHighlightMeta(score, isAbsent = false) {
+    if (isAbsent || score === null || score === undefined || isNaN(score)) {
+      return {
+        rowClass: '',
+        nameClass: '',
+        nameTagHtml: '',
+        scoreClass: 'score-absent',
+      };
+    }
+    if (score < 5) {
+      return {
+        rowClass: 'row-student-lt5',
+        nameClass: 'student-name-lt5',
+        nameTagHtml: `<span class="student-tier-tag tag-lt5">Dưới 5</span>`,
+        scoreClass: 'score-lt5',
+      };
+    }
+    if (score >= 9) {
+      const is10 = Math.abs(score - 10) < 1e-9;
+      return {
+        rowClass: 'row-student-gt9',
+        nameClass: 'student-name-gt9',
+        nameTagHtml: is10
+          ? `<span class="student-tier-tag tag-10">Điểm 10</span>`
+          : `<span class="student-tier-tag tag-gt9">Trên 9</span>`,
+        scoreClass: is10 ? 'score-10' : 'score-gt9',
+      };
+    }
+    return {
+      rowClass: '',
+      nameClass: '',
+      nameTagHtml: '',
+      scoreClass: score >= 8 ? 'score-high' : 'score-mid',
+    };
+  }
+
   function buildStudentRowsHtml(students, sessionDate) {
     if (!students || students.length === 0) {
       return `<tr><td colspan="6" style="text-align:center; padding:18px; color:#64748b; font-weight:600;">Không có học sinh nào có điểm trong cột này</td></tr>`;
     }
     return students
       .map((item, idx) => {
-        let scoreClass = 'score-mid';
-        if (Math.abs(item.score - 10) < 1e-9) scoreClass = 'score-10';
-        else if (item.score >= 8) scoreClass = 'score-high';
+        const hl = getStudentHighlightMeta(item.score, item.absent);
 
         return `
-          <tr>
+          <tr class="${hl.rowClass}">
             <td class="stt-col">${idx + 1}</td>
-            <td style="font-weight:700;">${escapeHtml(item.name)}</td>
+            <td class="${hl.nameClass}" style="font-weight:700;">${escapeHtml(item.name)}${hl.nameTagHtml}</td>
             <td class="num-col">Khối ${escapeHtml(String(item.grade))}</td>
             <td class="num-col">GV ${escapeHtml(item.teacher)}</td>
             <td class="num-col">${escapeHtml(item.examDate || sessionDate || '-')}</td>
-            <td class="num-col"><span class="score-pill-badge ${scoreClass}">${fmtFixed(item.score, 2)}</span></td>
+            <td class="num-col"><span class="score-pill-badge ${hl.scoreClass}">${fmtFixed(item.score, 2)}</span></td>
           </tr>
         `;
       })
@@ -2034,18 +2068,16 @@
                           else if (item.rank === 2) rankBadge = `<span class="rank-medal rank-2">2</span>`;
                           else if (item.rank === 3) rankBadge = `<span class="rank-medal rank-3">3</span>`;
 
-                          let scoreClass = 'score-mid';
-                          if (Math.abs(item.score - 10) < 1e-9) scoreClass = 'score-10';
-                          else if (item.score >= 8) scoreClass = 'score-high';
+                          const hl = getStudentHighlightMeta(item.score, false);
 
                           return `
-                            <tr>
+                            <tr class="${hl.rowClass}">
                               <td class="stt-col">${rankBadge}</td>
-                              <td style="font-weight:700;">${escapeHtml(item.name)}</td>
+                              <td class="${hl.nameClass}" style="font-weight:700;">${escapeHtml(item.name)}${hl.nameTagHtml}</td>
                               <td class="num-col">Khối ${escapeHtml(String(item.grade))}</td>
                               <td class="num-col">GV ${escapeHtml(item.teacher)}</td>
                               <td class="num-col">${escapeHtml(item.examDate || sess.date || '-')}</td>
-                              <td class="num-col"><span class="score-pill-badge ${scoreClass}">${fmtFixed(item.score, 2)}</span></td>
+                              <td class="num-col"><span class="score-pill-badge ${hl.scoreClass}">${fmtFixed(item.score, 2)}</span></td>
                             </tr>
                           `;
                         })
@@ -2070,12 +2102,16 @@
 
     const baseRecs = getFilteredRecords(sess, state.currentSubject, state.filterTeacher, state.filterGrade);
     const totalAbsent = baseRecs.filter((r) => r.absent || r.score === null).length;
+    const totalLt5 = baseRecs.filter((r) => !r.absent && r.score !== null && r.score < 5).length;
+    const totalGt9 = baseRecs.filter((r) => !r.absent && r.score !== null && r.score >= 9).length;
 
     const strip = document.getElementById('absentSummaryStrip');
     if (strip) {
       const teachers = Array.from(new Set(baseRecs.map((r) => r.teacher)));
       strip.innerHTML =
-        `<span style="background:#ffe4e6; color:#e11d48; padding:5px 12px; border-radius:8px; font-size:12.5px; font-weight:800;">Vắng thi (x) Môn ${escapeHtml(state.currentSubject)} - Khối ${escapeHtml(String(state.filterGrade))}: ${totalAbsent} / ${baseRecs.length} HS</span>` +
+        `<span style="background:#ecfdf5; color:#047857; border:1px solid #34d399; padding:5px 12px; border-radius:8px; font-size:12.5px; font-weight:800;">Trên 9 (&gt;= 9.0): ${totalGt9} HS</span>` +
+        `<span style="background:#fee2e2; color:#dc2626; border:1px solid #f87171; padding:5px 12px; border-radius:8px; font-size:12.5px; font-weight:800;">Dưới 5 (&lt; 5.0): ${totalLt5} HS</span>` +
+        `<span style="background:#fef3c7; color:#b45309; border:1px solid #fcd34d; padding:5px 12px; border-radius:8px; font-size:12.5px; font-weight:800;">Vắng thi (x): ${totalAbsent} / ${baseRecs.length} HS</span>` +
         teachers
           .map((t) => {
             const cnt = baseRecs.filter((r) => r.teacher === t && (r.absent || r.score === null)).length;
@@ -2089,6 +2125,7 @@
       if (state.studentStatusFilter === 'SCORED' && (r.absent || r.score === null)) return false;
       if (state.studentStatusFilter === 'ABSENT' && !(r.absent || r.score === null)) return false;
       if (state.studentStatusFilter === 'LT5' && (r.absent || r.score === null || r.score >= 5)) return false;
+      if (state.studentStatusFilter === 'GT9' && (r.absent || r.score === null || r.score < 9)) return false;
       if (q && !r.name.toLowerCase().includes(q) && !r.teacher.toLowerCase().includes(q)) return false;
       return true;
     });
@@ -2105,14 +2142,15 @@
       .slice(0, 1000)
       .map((r, idx) => {
         const isAbs = r.absent || r.score === null;
+        const hl = getStudentHighlightMeta(r.score, isAbs);
         const badgeHtml = isAbs
           ? `<span class="score-pill-badge score-absent">x (Không thi)</span>`
-          : `<span class="score-pill-badge ${r.score >= 8 ? 'score-high' : 'score-mid'}">${fmtFixed(r.score, 2)}</span>`;
+          : `<span class="score-pill-badge ${hl.scoreClass}">${fmtFixed(r.score, 2)}</span>`;
 
         return `
-          <tr>
+          <tr class="${hl.rowClass}">
             <td class="stt-col">${idx + 1}</td>
-            <td style="font-weight:700;">${escapeHtml(r.name)}</td>
+            <td class="${hl.nameClass}" style="font-weight:700;">${escapeHtml(r.name)}${hl.nameTagHtml}</td>
             <td class="num-col">Khối ${escapeHtml(String(r.grade))}</td>
             <td class="num-col">${escapeHtml(r.subject)}</td>
             <td class="num-col">GV ${escapeHtml(r.teacher)}</td>
@@ -2798,6 +2836,8 @@
 
     list.forEach((item, rIdx) => {
       const ry = ty + 40 + rIdx * rowH;
+      const isLt5 = item.score < 5;
+      const isGt9 = item.score >= 9;
       const cells = [
         String(item.rank),
         item.name,
@@ -2809,12 +2849,24 @@
 
       let rx = tx;
       cells.forEach((val, cIdx) => {
-        ctx.fillStyle = cIdx === 0 ? '#eff6ff' : rIdx % 2 === 0 ? '#f8fafc' : '#ffffff';
+        if (isLt5) {
+          ctx.fillStyle = cIdx === 0 ? '#ffe4e6' : '#fff1f2';
+        } else if (isGt9) {
+          ctx.fillStyle = cIdx === 0 ? '#d1fae5' : '#ecfdf5';
+        } else {
+          ctx.fillStyle = cIdx === 0 ? '#eff6ff' : rIdx % 2 === 0 ? '#f8fafc' : '#ffffff';
+        }
         ctx.fillRect(rx, ry, colWidths[cIdx], rowH);
         ctx.strokeStyle = '#cbd5e1';
         ctx.strokeRect(rx, ry, colWidths[cIdx], rowH);
 
-        ctx.fillStyle = cIdx === 0 ? '#1e40af' : cIdx === 5 ? '#e11d48' : '#0f172a';
+        if (isLt5 && (cIdx === 1 || cIdx === 5)) {
+          ctx.fillStyle = '#dc2626';
+        } else if (isGt9 && (cIdx === 1 || cIdx === 5)) {
+          ctx.fillStyle = '#047857';
+        } else {
+          ctx.fillStyle = cIdx === 0 ? '#1e40af' : cIdx === 5 ? '#2563eb' : '#0f172a';
+        }
         ctx.font = cIdx === 0 || cIdx === 1 || cIdx === 5 ? '700 14.5px Inter, sans-serif' : '500 14px Inter, sans-serif';
         ctx.textAlign = cIdx === 1 ? 'left' : 'center';
         ctx.textBaseline = 'middle';
@@ -2873,14 +2925,28 @@
     rows.forEach((tr, rIdx) => {
       const cells = Array.from(tr.querySelectorAll('td')).slice(0, 6).map((td) => td.textContent.trim());
       if (cells.length < 6) return;
+      const isLt5 = tr.classList.contains('row-student-lt5');
+      const isGt9 = tr.classList.contains('row-student-gt9');
       const ry = ty + (rIdx + 1) * rh;
       let rx = 40;
       cells.forEach((val, cIdx) => {
-        ctx.fillStyle = cIdx === 0 ? '#eff6ff' : rIdx % 2 === 0 ? '#f8fafc' : '#ffffff';
+        if (isLt5) {
+          ctx.fillStyle = cIdx === 0 ? '#ffe4e6' : '#fff1f2';
+        } else if (isGt9) {
+          ctx.fillStyle = cIdx === 0 ? '#d1fae5' : '#ecfdf5';
+        } else {
+          ctx.fillStyle = cIdx === 0 ? '#eff6ff' : rIdx % 2 === 0 ? '#f8fafc' : '#ffffff';
+        }
         ctx.fillRect(rx, ry, colWidths[cIdx], rh);
         ctx.strokeStyle = '#cbd5e1';
         ctx.strokeRect(rx, ry, colWidths[cIdx], rh);
-        ctx.fillStyle = cIdx === 0 ? '#1e40af' : cIdx === 5 ? '#e11d48' : '#0f172a';
+        if (isLt5 && (cIdx === 1 || cIdx === 5)) {
+          ctx.fillStyle = '#dc2626';
+        } else if (isGt9 && (cIdx === 1 || cIdx === 5)) {
+          ctx.fillStyle = '#047857';
+        } else {
+          ctx.fillStyle = cIdx === 0 ? '#1e40af' : cIdx === 5 ? '#b45309' : '#0f172a';
+        }
         ctx.font = cIdx === 0 || cIdx === 1 || cIdx === 5 ? '700 14px Inter, sans-serif' : '500 14px Inter, sans-serif';
         ctx.textAlign = cIdx === 1 ? 'left' : 'center';
         ctx.textBaseline = 'middle';
