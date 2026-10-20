@@ -466,7 +466,7 @@ body.sidebar-collapsed .main-wrapper {
    PROMINENT QUICK FILTER BAR (Khối thi, Giáo viên, Chia cột điểm)
    ========================================================================== */
 .quick-filter-banner {
-  background: rgba(255, 255, 255, 0.96);
+  background: rgba(255, 255, 255, 0.97);
   backdrop-filter: blur(10px);
   border-radius: var(--radius-lg);
   border: 1.5px solid #bfdbfe;
@@ -476,8 +476,16 @@ body.sidebar-collapsed .main-wrapper {
   flex-direction: column;
   gap: 9px;
   position: sticky;
-  top: 10px;
+  top: 8px;
   z-index: 200;
+  transition: border-radius 0.15s ease, box-shadow 0.15s ease;
+}
+
+.quick-filter-banner.has-stuck-bar {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  border-bottom-color: #cbd5e1;
+  box-shadow: 0 2px 10px rgba(37, 99, 235, 0.05);
 }
 
 .filter-row-line {
@@ -710,18 +718,35 @@ body.sidebar-collapsed .main-wrapper {
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-md);
   border: 1px solid var(--border-color);
-  overflow: hidden;
+  overflow: visible;
+  position: relative;
 }
 
 .report-action-bar {
-  background: #ffffff;
-  border-bottom: 1px solid #f1f5f9;
+  position: sticky;
+  top: var(--sticky-action-bar-top, 108px);
+  z-index: 180;
+  background: rgba(255, 255, 255, 0.98);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid #e2e8f0;
+  border-top-left-radius: var(--radius-lg);
+  border-top-right-radius: var(--radius-lg);
   padding: 12px 20px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 10px;
+  transition: box-shadow 0.16s ease, border-radius 0.16s ease, border-color 0.16s ease;
+}
+
+.report-action-bar.is-stuck {
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+  border-bottom-left-radius: 12px;
+  border-bottom-right-radius: 12px;
+  border-bottom: 1.5px solid #93c5fd;
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.10);
 }
 
 .report-action-title {
@@ -746,6 +771,8 @@ body.sidebar-collapsed .main-wrapper {
   background: #f8fafc;
   padding: 20px 24px;
   color: #0f172a;
+  border-bottom-left-radius: var(--radius-lg);
+  border-bottom-right-radius: var(--radius-lg);
 }
 
 .thpt-sub-banner {
@@ -1199,8 +1226,9 @@ body.sidebar-collapsed .main-wrapper {
   }
 
   .quick-filter-banner {
-    position: static;
-    padding: 10px 12px;
+    position: sticky;
+    top: 6px;
+    padding: 9px 12px;
   }
 }
 
