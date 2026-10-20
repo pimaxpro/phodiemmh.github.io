@@ -116,30 +116,13 @@
     </section>
 
     <!-- ====================================================================
-         COMPACT & REFINED QUICK FILTER BAR (Khối thi, Giáo viên, Chia cột điểm)
+         COMPACT & REFINED QUICK FILTER BAR (Khối thi, Giáo viên)
          ==================================================================== -->
     <section class="quick-filter-banner">
-      <!-- Row 1: Khối thi + Chia cột điểm -->
+      <!-- Row 1: Khối thi -->
       <div class="filter-row-line">
         <div class="filter-pill-group" id="quickGradePills">
           <!-- Populated dynamically with clickable pills for each Grade of the Subject -->
-        </div>
-
-        <div class="filter-pill-group qf-right-tools">
-          <span class="filter-group-label" title="Độ rộng mỗi cột điểm">
-            <i class="fa-solid fa-sliders"></i> Cột
-          </span>
-          <div class="qf-segmented-group">
-            <button type="button" class="choice-pill bin-step-pill active" data-step="0.5">0.5đ</button>
-            <button type="button" class="choice-pill bin-step-pill" data-step="0.25">0.25đ</button>
-            <button type="button" class="choice-pill bin-step-pill" data-step="1.0">1.0đ</button>
-          </div>
-
-          <label class="choice-pill qf-curve-pill" title="Hiển thị đường xu thế phân phối và Điểm trung bình">
-            <input type="checkbox" id="toggleBellCurve" checked />
-            <i class="fa-solid fa-wave-square"></i>
-            <span>Xu thế & ĐTB</span>
-          </label>
         </div>
       </div>
 
@@ -161,6 +144,23 @@
           <span>Phổ điểm môn thi</span>
         </div>
         <div class="export-controls">
+          <div class="filter-pill-group qf-right-tools">
+            <span class="filter-group-label" title="Độ rộng mỗi cột điểm">
+              <i class="fa-solid fa-sliders"></i> Cột
+            </span>
+            <div class="qf-segmented-group">
+              <button type="button" class="choice-pill bin-step-pill active" data-step="0.5">0.5đ</button>
+              <button type="button" class="choice-pill bin-step-pill" data-step="0.25">0.25đ</button>
+              <button type="button" class="choice-pill bin-step-pill" data-step="1.0">1.0đ</button>
+            </div>
+
+            <label class="choice-pill qf-curve-pill" title="Hiển thị đường xu thế phân phối và Điểm trung bình">
+              <input type="checkbox" id="toggleBellCurve" checked />
+              <i class="fa-solid fa-wave-square"></i>
+              <span>Xu thế & ĐTB</span>
+            </label>
+          </div>
+
           <button class="btn btn-primary btn-sm" id="btnExportCurrentPhoDiem">
             <i class="fa-solid fa-download"></i>
             <span>Tải ảnh</span>
