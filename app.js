@@ -1412,71 +1412,26 @@
     return parts.join('');
   }
 
-  function renderSelectedBinInlinePanel(stats) {
+  function renderSelectedBinInlinePanel() {
     const panel = document.getElementById('selectedBinStudentsPanel');
-    if (!panel) return;
-
-    if (
-      state.selectedBinIndex === null ||
-      !stats ||
-      !stats.bins ||
-      state.selectedBinIndex < 0 ||
-      state.selectedBinIndex >= stats.bins.length
-    ) {
+    if (panel) {
       panel.style.display = 'none';
       panel.innerHTML = '';
-      return;
     }
+  }
 
-    const bin = stats.bins[state.selectedBinIndex];
-    const sess = getCurrentSession();
-    const teacherLabel = state.filterTeacher !== 'ALL' ? ` • GV ${state.filterTeacher}` : ' • Cả nhóm';
-
-    panel.style.display = 'block';
-    panel.innerHTML = `
-      <div class="thpt-rank-box animate-fade-in" style="border-color:#d5dcf0; background:#f8fafc;">
-        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:10px;">
-          <div>
-            <h3 style="margin-bottom:2px; font-size:14.5px;">
-              <i class="fa-solid fa-users-viewfinder" style="color:#27397c; margin-right:5px;"></i>CỘT ĐIỂM <span class="highlight-red">${escapeHtml(bin.shortLabel)}</span> (${escapeHtml(bin.label)})
-            </h3>
-            <div style="font-size:12px; color:#475569; font-weight:600;">
-              ${escapeHtml(state.currentSubject)} • Khối ${escapeHtml(String(state.filterGrade))}${escapeHtml(teacherLabel)} • <b style="color:#ee642c;">${fmtInt(bin.count)} thí sinh</b> (${fmtFixed(bin.pct, 1)}%)
-            </div>
-          </div>
-          <button type="button" class="btn btn-outline btn-sm" id="btnClearSelectedBin"><i class="fa-solid fa-xmark"></i> Đóng</button>
-        </div>
-
-        <div style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px;">
-          ${buildTeacherSummaryBadgesHtml(bin.students)}
-        </div>
-
-        <div style="overflow-x:auto; max-height:360px; overflow-y:auto; border-radius:10px; border:1px solid #cbd5e1; background:#ffffff;">
-          <table class="thpt-rank-table">
-            <thead style="position:sticky; top:0; z-index:2;">
-              <tr>
-                <th style="width:52px;">#</th>
-                <th style="text-align:left;">Học sinh</th>
-                <th style="width:85px;">Khối</th>
-                <th style="width:160px;">Giáo viên</th>
-                <th style="width:110px;">Ngày thi</th>
-                <th style="width:105px;">Điểm</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${buildStudentRowsHtml(bin.students, sess?.date)}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    `;
-
-    panel.querySelector('#btnClearSelectedBin')?.addEventListener('click', () => {
-      state.selectedBinIndex = null;
-      panel.style.display = 'none';
-      const canvas = document.getElementById('phoDiemCanvas');
+  function closeBinStudentsModal() {
+    const modal = document.getElementById('binStudentsModal');
+    if (modal) modal.classList.remove('open');
+    state.selectedBinIndex = null;
+    renderSelectedBinInlinePanel();
+    const canvas = document.getElementById('phoDiemCanvas');
+    if (canvas) {
+      const sess = getCurrentSession();
+      const records = getFilteredRecords(sess, state.currentSubject, state.filterTeacher, state.filterGrade);
+      const stats = computeStatistics(records, state.binStep);
       drawTHPTChartOnCanvas(canvas, stats, 1, -1);
-    });
+    }
   }
 
   function openBinStudentsModal(stats, binIndex, subject, grade, teacherFilter, session) {
@@ -1511,7 +1466,6 @@
           if (subject === state.currentSubject && String(grade) === String(state.filterGrade)) {
             state.selectedBinIndex = newIdx;
             drawTHPTChartOnCanvas(document.getElementById('phoDiemCanvas'), stats, 1, newIdx);
-            renderSelectedBinInlinePanel(stats);
           }
           openBinStudentsModal(stats, newIdx, subject, grade, teacherFilter, session);
         });
@@ -3450,16 +3404,16 @@
       document.getElementById('uploadSessionModal').classList.remove('open');
     });
     document.getElementById('btnCloseBinModal')?.addEventListener('click', () => {
-      document.getElementById('binStudentsModal')?.classList.remove('open');
+      closeBinStudentsModal();
     });
     document.getElementById('binStudentsModal')?.addEventListener('click', (e) => {
       if (e.target.id === 'binStudentsModal') {
-        document.getElementById('binStudentsModal')?.classList.remove('open');
+        closeBinStudentsModal();
       }
     });
     window.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
-        document.getElementById('binStudentsModal')?.classList.remove('open');
+        closeBinStudentsModal();
         document.getElementById('uploadSessionModal')?.classList.remove('open');
       }
     });
