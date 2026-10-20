@@ -2152,7 +2152,7 @@
     if (!tbody) return;
 
     if (filtered.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:18px; color:#64748b;">Không có học sinh nào trong mục này</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:18px; color:#64748b;">Không có học sinh nào trong mục này</td></tr>`;
       return;
     }
 
@@ -2173,41 +2173,10 @@
             <td class="num-col">${escapeHtml(r.subject)}</td>
             <td class="num-col">GV ${escapeHtml(r.teacher)}</td>
             <td class="num-col">${badgeHtml}</td>
-            <td class="num-col">
-              <button type="button" class="btn btn-outline btn-sm" data-toggle-absent="${escapeHtml(r.id)}" style="padding:3px 8px; font-size:11px;">
-                ${isAbs ? '<i class="fa-solid fa-pen"></i> Nhập điểm' : '<i class="fa-solid fa-user-xmark"></i> Tích x'}
-              </button>
-            </td>
           </tr>
         `;
       })
       .join('');
-
-    tbody.querySelectorAll('[data-toggle-absent]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const recId = btn.getAttribute('data-toggle-absent');
-        const target = sess.records.find((x) => x.id === recId);
-        if (!target) return;
-        if (target.absent || target.score === null) {
-          const valStr = prompt(`Nhập điểm thi cho học sinh ${target.name} (0 - 10):`, '7.5');
-          if (valStr === null) return;
-          const num = parseFloat(valStr.replace(',', '.'));
-          if (!isNaN(num) && num >= 0 && num <= 10) {
-            target.score = num;
-            target.absent = false;
-            saveSessionsToStorage();
-            refreshAllUI(false);
-            showToast(`Đã cập nhật điểm ${num} cho ${target.name}`);
-          }
-        } else {
-          target.score = null;
-          target.absent = true;
-          saveSessionsToStorage();
-          refreshAllUI(false);
-          showToast(`Đã tích dấu x (Không thi) cho ${target.name}`);
-        }
-      });
-    });
   }
 
   // ============================================================================
