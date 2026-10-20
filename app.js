@@ -758,6 +758,20 @@
     refreshAllUI(true);
   }
 
+  function getSubjectIconClass(subj) {
+    const s = String(subj || '').toLowerCase();
+    if (s.includes('toán')) return 'fa-solid fa-square-root-variable';
+    if (s.includes('lý') || s.includes('lí') || s.includes('vật')) return 'fa-solid fa-atom';
+    if (s.includes('hóa')) return 'fa-solid fa-flask';
+    if (s.includes('sinh')) return 'fa-solid fa-dna';
+    if (s.includes('anh') || s.includes('ngoại')) return 'fa-solid fa-language';
+    if (s.includes('văn')) return 'fa-solid fa-feather-pointed';
+    if (s.includes('sử')) return 'fa-solid fa-landmark';
+    if (s.includes('địa')) return 'fa-solid fa-earth-asia';
+    if (s.includes('tin')) return 'fa-solid fa-laptop-code';
+    return 'fa-solid fa-book';
+  }
+
   function renderSubjectTabs() {
     const sess = getCurrentSession();
     const container = document.getElementById('subjectTabsContainer');
@@ -766,12 +780,13 @@
 
     sess.subjects.forEach((subj) => {
       const grades = getGradesForSubject(sess, subj);
+      const iconCls = getSubjectIconClass(subj);
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'subject-tab' + (state.currentSubject === subj ? ' active' : '');
       btn.innerHTML = `
-        <span>${escapeHtml(subj)}</span>
-        <span class="subj-badge">K${grades.join(', ')}</span>
+        <span class="subj-tab-left"><i class="${iconCls}"></i> <span>${escapeHtml(subj)}</span></span>
+        <span class="subj-badge">K${grades.join(',')}</span>
       `;
       btn.addEventListener('click', () => {
         if (window.innerWidth <= 960) {
@@ -846,11 +861,11 @@
     // 3. Compare Grade Filter in Section 3
     const compareGradeSelect = document.getElementById('compareGradeFilter');
     if (compareGradeSelect) {
-      compareGradeSelect.innerHTML = `<option value="ALL">Tất cả các Khối (${grades.length} khối)</option>`;
+      compareGradeSelect.innerHTML = `<option value="ALL">Tất cả Khối (${grades.length})</option>`;
       grades.forEach((g) => {
         const opt = document.createElement('option');
         opt.value = g;
-        opt.textContent = `Chỉ xem Khối ${g}`;
+        opt.textContent = `Khối ${g}`;
         if (String(state.compareGradeFilter) === String(g)) opt.selected = true;
         compareGradeSelect.appendChild(opt);
       });
@@ -864,10 +879,10 @@
     const teacherLabel = state.filterTeacher !== 'ALL' ? ` • GV ${state.filterTeacher}` : ' • Cả nhóm';
 
     document.getElementById('thptSubBannerText').textContent =
-      `PHỔ ĐIỂM MÔN ${state.currentSubject.toUpperCase()} — KHỐI ${state.filterGrade}${teacherLabel.toUpperCase()} (${sess.shortName.toUpperCase()})`;
+      `${state.currentSubject.toUpperCase()} — KHỐI ${state.filterGrade}${teacherLabel.toUpperCase()} (${sess.shortName.toUpperCase()})`;
 
     document.getElementById('thptCenterTag').textContent =
-      `${state.centerName} • Khối ${state.filterGrade}${teacherLabel}`;
+      `${state.centerName}`;
 
     document.getElementById('statSoTS').textContent = fmtInt(stats.count);
     document.getElementById('statSoTSNote').textContent = `/${fmtInt(stats.totalRoster)} ĐK`;
@@ -1382,7 +1397,7 @@
     const parts = [];
     map.forEach((cnt, t) => {
       parts.push(
-        `<span style="background:#eff6ff; color:#1e40af; border:1px solid #bfdbfe; padding:4px 10px; border-radius:7px; font-size:12px; font-weight:700;">GV ${escapeHtml(t)}: <b>${cnt} HS</b></span>`
+        `<span class="mini-stat-chip"><i class="fa-solid fa-chalkboard-user"></i> ${escapeHtml(t)}: <b>${cnt}</b></span>`
       );
     });
     return parts.join('');
@@ -1410,17 +1425,17 @@
 
     panel.style.display = 'block';
     panel.innerHTML = `
-      <div class="thpt-rank-box" style="border-color:#93c5fd; background:#f8fafc;">
+      <div class="thpt-rank-box animate-fade-in" style="border-color:#93c5fd; background:#f8fafc;">
         <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:10px;">
           <div>
-            <h3 style="margin-bottom:2px; font-size:15px;">
-              DANH SÁCH HỌC SINH TRONG CỘT ĐIỂM <span class="highlight-red">${escapeHtml(bin.shortLabel)}</span> (${escapeHtml(bin.label)})
+            <h3 style="margin-bottom:2px; font-size:14.5px;">
+              <i class="fa-solid fa-users-viewfinder" style="color:#2563eb; margin-right:5px;"></i>CỘT ĐIỂM <span class="highlight-red">${escapeHtml(bin.shortLabel)}</span> (${escapeHtml(bin.label)})
             </h3>
-            <div style="font-size:12.5px; color:#475569; font-weight:600;">
-              Môn ${escapeHtml(state.currentSubject)} — Khối ${escapeHtml(String(state.filterGrade))}${escapeHtml(teacherLabel)} • Số lượng: <b style="color:#e11d48;">${fmtInt(bin.count)} học sinh</b> (${fmtFixed(bin.pct, 1)}%)
+            <div style="font-size:12px; color:#475569; font-weight:600;">
+              ${escapeHtml(state.currentSubject)} • Khối ${escapeHtml(String(state.filterGrade))}${escapeHtml(teacherLabel)} • <b style="color:#e11d48;">${fmtInt(bin.count)} thí sinh</b> (${fmtFixed(bin.pct, 1)}%)
             </div>
           </div>
-          <button type="button" class="btn btn-outline btn-sm" id="btnClearSelectedBin">✕ Ẩn danh sách</button>
+          <button type="button" class="btn btn-outline btn-sm" id="btnClearSelectedBin"><i class="fa-solid fa-xmark"></i> Đóng</button>
         </div>
 
         <div style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px;">
@@ -1431,12 +1446,12 @@
           <table class="thpt-rank-table">
             <thead style="position:sticky; top:0; z-index:2;">
               <tr>
-                <th style="width:56px;">STT</th>
-                <th style="text-align:left;">Họ và tên học sinh</th>
-                <th style="width:90px;">Khối</th>
-                <th style="width:170px;">Giáo viên</th>
-                <th style="width:120px;">Ngày thi</th>
-                <th style="width:110px;">Điểm thi</th>
+                <th style="width:52px;">#</th>
+                <th style="text-align:left;">Học sinh</th>
+                <th style="width:85px;">Khối</th>
+                <th style="width:160px;">Giáo viên</th>
+                <th style="width:110px;">Ngày thi</th>
+                <th style="width:105px;">Điểm</th>
               </tr>
             </thead>
             <tbody>
@@ -1463,16 +1478,16 @@
     const teacherLabel = teacherFilter && teacherFilter !== 'ALL' ? ` • GV ${teacherFilter}` : ' • Cả nhóm';
 
     document.getElementById('binModalTitle').innerHTML =
-      `DANH SÁCH HỌC SINH CỘT ĐIỂM <span style="color:#e11d48;">${escapeHtml(bin.shortLabel)}</span> <span style="font-size:13.5px; color:#475569;">(${escapeHtml(bin.label)})</span>`;
+      `<i class="fa-solid fa-users-viewfinder" style="color:#2563eb; margin-right:6px;"></i>CỘT ĐIỂM <span style="color:#e11d48;">${escapeHtml(bin.shortLabel)}</span> <span style="font-size:13px; color:#475569;">(${escapeHtml(bin.label)})</span>`;
 
     document.getElementById('binModalSubtitle').innerHTML =
-      `Môn <b>${escapeHtml(subject)}</b> — Khối <b>${escapeHtml(String(grade))}</b>${escapeHtml(teacherLabel)} (${escapeHtml(session?.shortName || '')}) • Có <b style="color:#e11d48;">${fmtInt(bin.count)} học sinh</b> (${fmtFixed(bin.pct, 1)}%)`;
+      `<b>${escapeHtml(subject)}</b> • Khối <b>${escapeHtml(String(grade))}</b>${escapeHtml(teacherLabel)} (${escapeHtml(session?.shortName || '')}) • <b style="color:#e11d48;">${fmtInt(bin.count)} TS</b> (${fmtFixed(bin.pct, 1)}%)`;
 
     // Render quick switcher pills for all columns
     const switcher = document.getElementById('binModalQuickSwitcher');
     if (switcher) {
       switcher.innerHTML =
-        `<span style="font-size:11.5px; font-weight:800; color:#1e40af; display:inline-flex; align-items:center; margin-right:4px;">Chọn cột điểm khác:</span>` +
+        `<span style="font-size:11.5px; font-weight:700; color:#1e40af; display:inline-flex; align-items:center; gap:4px; margin-right:4px;"><i class="fa-solid fa-chart-column"></i> Cột:</span>` +
         stats.bins
           .map((b, idx) => {
             const act = idx === binIndex ? 'active' : '';
@@ -1506,9 +1521,9 @@
   function renderMultiSessionComparison() {
     const subj = state.currentSubject;
     const grade = state.filterGrade;
-    const teacherSuffix = state.filterTeacher !== 'ALL' ? ` (GV ${state.filterTeacher})` : '';
+    const teacherSuffix = state.filterTeacher !== 'ALL' ? ` • GV ${state.filterTeacher}` : '';
     document.getElementById('comparisonBannerTitle').textContent =
-      `SO SÁNH MÔN ${subj.toUpperCase()} — KHỐI ${grade}${teacherSuffix.toUpperCase()} QUA CÁC LẦN THI`;
+      `${subj.toUpperCase()} — KHỐI ${grade}${teacherSuffix.toUpperCase()} QUA CÁC ĐỢT THI`;
 
     const sessionStatsList = state.sessions.map((sess) => {
       const recs = getFilteredRecords(sess, subj, state.filterTeacher, grade);
@@ -1521,7 +1536,7 @@
     const table = document.getElementById('multiSessionComparisonTable');
     if (!table) return;
 
-    let theadHtml = `<thead><tr><th>CHỈ SỐ (KHỐI ${escapeHtml(String(grade))}) / LẦN THI</th>`;
+    let theadHtml = `<thead><tr><th>CHỈ SỐ (KHỐI ${escapeHtml(String(grade))})</th>`;
     sessionStatsList.forEach((item) => {
       theadHtml += `<th colspan="2">${escapeHtml(item.session.shortName || item.session.name)}</th>`;
     });
@@ -1529,16 +1544,16 @@
 
     const rowsConfig = [
       {
-        label: 'Số thí sinh dự thi',
+        label: 'Số dự thi',
         render: (st) => `<td class="val-col">${fmtInt(st.count)}</td><td class="val-col">/${fmtInt(st.totalRoster)} ĐK</td>`,
       },
       {
-        label: 'Số thí sinh vắng thi (x)',
+        label: 'Vắng thi (x)',
         render: (st) =>
           `<td class="val-col text-thpt-purple">${fmtInt(st.absentCount)}</td><td class="val-col text-thpt-purple">${fmtPct(st.absentPct, 2)}</td>`,
       },
       {
-        label: 'Điểm trung bình',
+        label: 'Điểm TB',
         render: (st) => `<td class="val-col text-thpt-red">${fmtFixed(st.mean, 2)}</td><td class="val-col"></td>`,
       },
       {
@@ -1550,33 +1565,33 @@
         render: (st) => `<td class="val-col text-thpt-red">${fmtFixed(st.stdDev, 2)}</td><td class="val-col"></td>`,
       },
       {
-        label: 'Độ lệch tuyệt đối trung vị (MAD)',
+        label: 'MAD',
         render: (st) => `<td class="val-col">${fmtDec(st.mad, 2)}</td><td class="val-col"></td>`,
       },
       {
-        label: 'Điểm dưới trung bình (<5)',
+        label: 'Dưới 5 (< 5.0)',
         render: (st) =>
           `<td class="val-col text-thpt-purple">${fmtInt(st.lt5Count)}</td><td class="val-col text-thpt-purple">${fmtPct(st.lt5Pct, 2)}</td>`,
       },
       {
-        label: 'Điểm lớn hơn hoặc bằng 7 (>=7)',
+        label: 'Khá giỏi (>= 7.0)',
         render: (st) =>
           `<td class="val-col text-thpt-purple">${fmtInt(st.gte7Count)}</td><td class="val-col text-thpt-purple">${fmtPct(st.gte7Pct, 2)}</td>`,
       },
       {
-        label: 'Điểm nhiều thí sinh đạt nhất (Mode)',
+        label: 'Mode',
         render: (st) => `<td class="val-col">${fmtDec(st.mode, 2)}</td><td class="val-col"></td>`,
       },
       {
-        label: 'Số thí sinh đạt điểm 10',
+        label: 'Điểm 10',
         render: (st) => `<td class="val-col text-thpt-red">${fmtInt(st.score10Count)}</td><td class="val-col"></td>`,
       },
       {
-        label: 'Số thí sinh đạt điểm 0',
+        label: 'Điểm 0',
         render: (st) => `<td class="val-col">${fmtInt(st.score0Count)}</td><td class="val-col"></td>`,
       },
       {
-        label: 'Số thí sinh đạt điểm <=1',
+        label: 'Điểm <= 1.0',
         render: (st) => `<td class="val-col">${fmtInt(st.lte1Count)}</td><td class="val-col">${fmtPct(st.lte1Pct, 2)}</td>`,
       },
     ];
@@ -1767,30 +1782,33 @@
       });
 
       html += `
-        <div class="thpt-rank-box">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap;">
+        <div class="thpt-rank-box animate-fade-in">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 8px;">
             <h3 style="margin-bottom: 0;">
-              KHỐI <span class="highlight-red">${escapeHtml(String(grade))}</span> — SO SÁNH ĐTB CỦA GIÁO VIÊN VỚI ĐTB CHUNG CẢ NHÓM
+              <i class="fa-solid fa-layer-group" style="color:#2563eb; margin-right:5px;"></i>KHỐI <span class="highlight-red">${escapeHtml(String(grade))}</span>
             </h3>
-            <span style="font-size: 12.5px; font-weight: 700; color: #1e40af; background: #eff6ff; padding: 4px 10px; border-radius: 8px;">
-              Tổng Khối ${escapeHtml(String(grade))}: ${fmtInt(gradeTotalStats.count)} dự thi • ${fmtInt(gradeTotalStats.absentCount)} vắng (x) • ĐTB Chung Cả Nhóm: <b style="color:#e11d48;">${fmtFixed(groupMean, 2)}</b> • Cao nhất Khối: <b style="color:#059669;">${fmtFixed(gradeTotalStats.maxScore, 2)}</b>
-            </span>
+            <div style="display:flex; flex-wrap:wrap; gap:6px;">
+              <span class="mini-stat-chip"><i class="fa-solid fa-user-check"></i> Dự thi: <b>${fmtInt(gradeTotalStats.count)}</b></span>
+              <span class="mini-stat-chip" style="color:#7c3aed; border-color:#ddd6fe; background:#f5f3ff;"><i class="fa-solid fa-user-slash"></i> Vắng: <b>${fmtInt(gradeTotalStats.absentCount)}</b></span>
+              <span class="mini-stat-chip" style="color:#e11d48; border-color:#fecdd3; background:#fff1f2;"><i class="fa-solid fa-chart-line"></i> ĐTB Nhóm: <b>${fmtFixed(groupMean, 2)}</b></span>
+              <span class="mini-stat-chip" style="color:#047857; border-color:#a7f3d0; background:#ecfdf5;"><i class="fa-solid fa-trophy"></i> Cao nhất: <b>${fmtFixed(gradeTotalStats.maxScore, 2)}</b></span>
+            </div>
           </div>
           <div style="overflow-x: auto; border-radius: 10px; border: 1px solid #cbd5e1;">
             <table class="thpt-rank-table">
               <thead>
                 <tr>
-                  <th style="width: 48px;">Hạng</th>
+                  <th style="width: 46px;">#</th>
                   <th style="text-align: left;">Giáo viên</th>
                   <th>Dự thi</th>
                   <th>Vắng (x)</th>
-                  <th>ĐTB Khối của GV</th>
-                  <th>ĐTB Chung Cả Nhóm</th>
-                  <th>So với Cả Nhóm</th>
-                  <th>Điểm cao nhất</th>
-                  <th>Số điểm &gt;=8</th>
-                  <th>Số điểm 10</th>
-                  <th>Dưới TB (&lt;5)</th>
+                  <th>ĐTB GV</th>
+                  <th>ĐTB Nhóm</th>
+                  <th>Chênh lệch</th>
+                  <th>Cao nhất</th>
+                  <th>&gt;= 8.0</th>
+                  <th>Điểm 10</th>
+                  <th>&lt; 5.0</th>
                 </tr>
               </thead>
               <tbody>
@@ -1801,7 +1819,7 @@
                     return `
                   <tr>
                     <td class="stt-col">${idx + 1}</td>
-                    <td style="font-weight: 700;">GV ${escapeHtml(tr.teacher)}</td>
+                    <td style="font-weight: 700;"><i class="fa-regular fa-user" style="color:#64748b; margin-right:5px; font-size:11.5px;"></i>GV ${escapeHtml(tr.teacher)}</td>
                     <td class="num-col">${fmtInt(tr.stats.count)}</td>
                     <td class="num-col text-thpt-purple">${fmtInt(tr.stats.absentCount)}</td>
                     <td class="num-col text-thpt-red" style="font-size: 14px;">${fmtFixed(tr.stats.mean, 2)}</td>
@@ -2036,25 +2054,25 @@
       const tLabel = teacher !== 'ALL' ? ` • GV ${teacher}` : '';
 
       html += `
-        <div class="thpt-rank-box">
+        <div class="thpt-rank-box animate-fade-in">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
             <h3 style="margin-bottom:0;">
-              TOP <span class="highlight-red">${topN}</span> MÔN <span class="highlight-red">${escapeHtml(subj.toUpperCase())} — KHỐI ${escapeHtml(String(grade))}</span>${escapeHtml(tLabel)}
+              <i class="fa-solid fa-crown" style="color:#f59e0b; margin-right:5px;"></i>TOP <span class="highlight-red">${topN}</span> — <span class="highlight-red">${escapeHtml(subj.toUpperCase())} (KHỐI ${escapeHtml(String(grade))})</span>${escapeHtml(tLabel)}
             </h3>
-            <span style="font-size:12px; font-weight:600; color:#475569;">
-              ${list.length} / ${totalTested} TS dự thi
+            <span class="mini-stat-chip">
+              <i class="fa-solid fa-users"></i> ${list.length} / ${totalTested} TS
             </span>
           </div>
           <div style="overflow-x:auto; border-radius:10px; border:1px solid #cbd5e1;">
             <table class="thpt-rank-table">
               <thead>
                 <tr>
-                  <th style="width:60px;">Hạng</th>
+                  <th style="width:55px;">#</th>
                   <th style="text-align:left;">Học sinh</th>
                   <th style="width:90px;">Khối</th>
-                  <th style="width:170px;">Giáo viên</th>
-                  <th style="width:120px;">Ngày thi</th>
-                  <th style="width:110px;">Điểm thi</th>
+                  <th style="width:165px;">Giáo viên</th>
+                  <th style="width:115px;">Ngày thi</th>
+                  <th style="width:105px;">Điểm</th>
                 </tr>
               </thead>
               <tbody>
@@ -2109,13 +2127,13 @@
     if (strip) {
       const teachers = Array.from(new Set(baseRecs.map((r) => r.teacher)));
       strip.innerHTML =
-        `<span style="background:#ecfdf5; color:#047857; border:1px solid #34d399; padding:5px 12px; border-radius:8px; font-size:12.5px; font-weight:800;">Trên 9 (&gt;= 9.0): ${totalGt9} HS</span>` +
-        `<span style="background:#fee2e2; color:#dc2626; border:1px solid #f87171; padding:5px 12px; border-radius:8px; font-size:12.5px; font-weight:800;">Dưới 5 (&lt; 5.0): ${totalLt5} HS</span>` +
-        `<span style="background:#fef3c7; color:#b45309; border:1px solid #fcd34d; padding:5px 12px; border-radius:8px; font-size:12.5px; font-weight:800;">Vắng thi (x): ${totalAbsent} / ${baseRecs.length} HS</span>` +
+        `<span class="mini-stat-chip" style="background:#ecfdf5; color:#047857; border-color:#34d399;"><i class="fa-solid fa-star"></i> Trên 9 (&gt;= 9.0): <b>${totalGt9}</b></span>` +
+        `<span class="mini-stat-chip" style="background:#fee2e2; color:#dc2626; border-color:#f87171;"><i class="fa-solid fa-circle-exclamation"></i> Dưới 5 (&lt; 5.0): <b>${totalLt5}</b></span>` +
+        `<span class="mini-stat-chip" style="background:#fef3c7; color:#b45309; border-color:#fcd34d;"><i class="fa-solid fa-user-slash"></i> Vắng (x): <b>${totalAbsent}/${baseRecs.length}</b></span>` +
         teachers
           .map((t) => {
             const cnt = baseRecs.filter((r) => r.teacher === t && (r.absent || r.score === null)).length;
-            return `<span style="background:#ffffff; border:1px solid #cbd5e1; padding:5px 10px; border-radius:8px; font-size:12px; font-weight:600;">GV ${escapeHtml(t)}: <b style="color:#e11d48;">${cnt}</b> vắng</span>`;
+            return `<span class="mini-stat-chip" style="background:#ffffff; border-color:#cbd5e1; color:#334155;"><i class="fa-regular fa-user"></i> ${escapeHtml(t)}: <b style="color:#e11d48;">${cnt}</b> vắng</span>`;
           })
           .join('');
     }
@@ -2144,7 +2162,7 @@
         const isAbs = r.absent || r.score === null;
         const hl = getStudentHighlightMeta(r.score, isAbs);
         const badgeHtml = isAbs
-          ? `<span class="score-pill-badge score-absent">x (Không thi)</span>`
+          ? `<span class="score-pill-badge score-absent">x (Vắng)</span>`
           : `<span class="score-pill-badge ${hl.scoreClass}">${fmtFixed(r.score, 2)}</span>`;
 
         return `
@@ -2156,8 +2174,8 @@
             <td class="num-col">GV ${escapeHtml(r.teacher)}</td>
             <td class="num-col">${badgeHtml}</td>
             <td class="num-col">
-              <button type="button" class="btn btn-outline btn-sm" data-toggle-absent="${escapeHtml(r.id)}" style="padding:3px 8px; font-size:11.5px;">
-                ${isAbs ? 'Nhập điểm' : 'Tích x (Vắng)'}
+              <button type="button" class="btn btn-outline btn-sm" data-toggle-absent="${escapeHtml(r.id)}" style="padding:3px 8px; font-size:11px;">
+                ${isAbs ? '<i class="fa-solid fa-pen"></i> Nhập điểm' : '<i class="fa-solid fa-user-xmark"></i> Tích x'}
               </button>
             </td>
           </tr>
@@ -2212,33 +2230,38 @@
       const st = computeStatistics(recs, 0.5);
 
       const card = document.createElement('div');
-      card.className = 'mini-subject-card';
+      card.className = 'mini-subject-card animate-fade-in';
       const canvasId = `miniCanvas_${idx}`;
+      const iconCls = getSubjectIconClass(subj);
 
       const gradeBtnsHtml = grades
         .map((g) => {
           const isAct = String(g) === String(selectedGrade) ? 'active' : '';
-          return `<button type="button" class="mini-grade-btn ${isAct}" data-ov-grade="${escapeHtml(String(g))}">Khối ${escapeHtml(String(g))}</button>`;
+          return `<button type="button" class="mini-grade-btn ${isAct}" data-ov-grade="${escapeHtml(String(g))}">K${escapeHtml(String(g))}</button>`;
         })
         .join('');
 
       card.innerHTML = `
-        <div style="background:#f8fafc; padding:11px 15px; border-bottom:1px solid #e2e8f0; display:flex; flex-direction:column; gap:8px;">
+        <div style="background:#f8fafc; padding:10px 14px; border-bottom:1px solid #e2e8f0; display:flex; flex-direction:column; gap:7px;">
           <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
-            <div style="font-size:14.5px; font-weight:800; color:#1e3a8a;">
-              ${escapeHtml(subj.toUpperCase())} — KHỐI ${escapeHtml(String(selectedGrade))}
+            <div style="font-size:14px; font-weight:800; color:#1e3a8a; display:flex; align-items:center; gap:6px;">
+              <i class="${iconCls}" style="color:#2563eb;"></i>
+              <span>${escapeHtml(subj.toUpperCase())} • KHỐI ${escapeHtml(String(selectedGrade))}</span>
             </div>
             <div class="mini-grade-pills">
               ${gradeBtnsHtml}
             </div>
           </div>
           <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
-            <div style="font-size:12px; color:#475569;">
-              Dự thi: <b>${fmtInt(st.count)}</b> • Vắng (x): <b style="color:#7c3aed;">${st.absentCount}</b> • ĐTB: <b style="color:#e11d48;">${fmtFixed(st.mean, 2)}</b> • Điểm 10: <b style="color:#059669;">${st.score10Count}</b>
+            <div style="font-size:11.5px; color:#475569; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+              <span><i class="fa-solid fa-user-check" style="color:#2563eb;"></i> <b>${fmtInt(st.count)}</b></span>
+              <span><i class="fa-solid fa-user-slash" style="color:#7c3aed;"></i> <b style="color:#7c3aed;">${st.absentCount}</b></span>
+              <span>ĐTB: <b style="color:#e11d48;">${fmtFixed(st.mean, 2)}</b></span>
+              <span>Điểm 10: <b style="color:#059669;">${st.score10Count}</b></span>
             </div>
             <div style="display:flex; gap:5px;">
-              <button type="button" class="btn btn-outline btn-sm" data-focus-subj="${escapeHtml(subj)}">Chi tiết</button>
-              <button type="button" class="btn btn-primary btn-sm" data-export-subj="${escapeHtml(subj)}">Tải 4K</button>
+              <button type="button" class="btn btn-outline btn-sm" data-focus-subj="${escapeHtml(subj)}"><i class="fa-solid fa-expand"></i> Chi tiết</button>
+              <button type="button" class="btn btn-primary btn-sm" data-export-subj="${escapeHtml(subj)}"><i class="fa-solid fa-download"></i> 4K</button>
             </div>
           </div>
         </div>
@@ -3538,12 +3561,17 @@
       const v = parseInt(e.target.value, 10);
       if (!isNaN(v) && v > 0) {
         state.topN = v;
+        document.querySelectorAll('.quick-top-btn').forEach((b) => {
+          b.classList.toggle('active', parseInt(b.getAttribute('data-top'), 10) === v);
+        });
         renderTopStudentsSection();
       }
     });
 
     document.querySelectorAll('.quick-top-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
+        document.querySelectorAll('.quick-top-btn').forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
         const val = parseInt(btn.getAttribute('data-top'), 10) || 20;
         state.topN = val;
         if (topNInput) topNInput.value = String(val);
