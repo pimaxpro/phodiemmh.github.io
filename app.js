@@ -800,13 +800,13 @@
     // 1. Render Quick Grade Pills (ONLY individual grades — NO "Tất cả Khối")
     const gradePillsWrap = document.getElementById('quickGradePills');
     if (gradePillsWrap) {
-      let gHtml = `<span class="filter-group-label">Chọn Khối thi (${escapeHtml(state.currentSubject)}):</span>`;
+      let gHtml = `<span class="filter-group-label" title="Chọn Khối thi môn ${escapeHtml(state.currentSubject)}"><i class="fa-solid fa-layer-group"></i> Khối</span>`;
       grades.forEach((g) => {
         const cnt = subjRecords.filter(
           (r) => String(r.grade) === String(g) && !r.absent && r.score !== null
         ).length;
         const active = String(state.filterGrade) === String(g) ? 'active' : '';
-        gHtml += `<button type="button" class="choice-pill ${active}" data-g-pill="${escapeHtml(String(g))}">Khối ${escapeHtml(String(g))} <span class="cp-count">(${cnt} TS)</span></button>`;
+        gHtml += `<button type="button" class="choice-pill ${active}" data-g-pill="${escapeHtml(String(g))}" title="Khối ${escapeHtml(String(g))} (${cnt} thí sinh dự thi)"><span>Khối ${escapeHtml(String(g))}</span><span class="cp-count">${cnt}</span></button>`;
       });
       gradePillsWrap.innerHTML = gHtml;
 
@@ -826,12 +826,12 @@
     const teacherPillsWrap = document.getElementById('quickTeacherPills');
     if (teacherPillsWrap) {
       const totalGradeTested = gradeRecords.filter((r) => !r.absent && r.score !== null).length;
-      let tHtml = `<span class="filter-group-label">Giáo viên dạy Khối ${escapeHtml(String(state.filterGrade))}:</span>`;
-      tHtml += `<button type="button" class="choice-pill ${state.filterTeacher === 'ALL' ? 'active' : ''}" data-t-pill="ALL">Cả nhóm Khối ${escapeHtml(String(state.filterGrade))} (${teachersInGrade.length} GV • ${totalGradeTested} TS)</button>`;
+      let tHtml = `<span class="filter-group-label" title="Giáo viên dạy Khối ${escapeHtml(String(state.filterGrade))}"><i class="fa-solid fa-chalkboard-user"></i> Giáo viên</span>`;
+      tHtml += `<button type="button" class="choice-pill ${state.filterTeacher === 'ALL' ? 'active' : ''}" data-t-pill="ALL" title="Tổng hợp cả nhóm Khối ${escapeHtml(String(state.filterGrade))} (${teachersInGrade.length} giáo viên • ${totalGradeTested} thí sinh)"><i class="fa-solid fa-users qf-pill-icon"></i><span>Cả nhóm (${teachersInGrade.length})</span><span class="cp-count">${totalGradeTested}</span></button>`;
       teachersInGrade.forEach((t) => {
         const cnt = gradeRecords.filter((r) => r.teacher === t && !r.absent && r.score !== null).length;
         const active = state.filterTeacher === t ? 'active' : '';
-        tHtml += `<button type="button" class="choice-pill ${active}" data-t-pill="${escapeHtml(t)}">GV ${escapeHtml(t)} <span class="cp-count">(${cnt} TS)</span></button>`;
+        tHtml += `<button type="button" class="choice-pill ${active}" data-t-pill="${escapeHtml(t)}" title="Giáo viên ${escapeHtml(t)} — Khối ${escapeHtml(String(state.filterGrade))} (${cnt} thí sinh)"><i class="fa-regular fa-user qf-pill-icon"></i><span>${escapeHtml(t)}</span><span class="cp-count">${cnt}</span></button>`;
       });
       teacherPillsWrap.innerHTML = tHtml;
 
