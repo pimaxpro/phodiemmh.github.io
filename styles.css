@@ -1117,7 +1117,8 @@ body.sidebar-collapsed .main-wrapper {
   height: 410px;
 }
 
-.thpt-chart-canvas-wrap canvas {
+.thpt-chart-canvas-wrap canvas,
+.thpt-chart-canvas-wrap svg.thpt-vector-svg {
   width: 100% !important;
   height: 100% !important;
   display: block;
