@@ -3227,6 +3227,33 @@
     document.getElementById('sectionAllSubjectsOverview').style.display = v === 'all' || v === 'allsubjects' ? '' : 'none';
   }
 
+  function syncStickyReportActionBars() {
+    const qfb = document.querySelector('.quick-filter-banner');
+    let stickyTop = 8;
+    if (qfb && qfb.offsetParent !== null) {
+      const qfbTop = parseFloat(window.getComputedStyle(qfb).top) || 8;
+      stickyTop = Math.round(qfbTop + qfb.offsetHeight - 1);
+    }
+    document.documentElement.style.setProperty('--sticky-action-bar-top', `${stickyTop}px`);
+
+    let anyBarStuck = false;
+    const wrappers = document.querySelectorAll('.thpt-report-wrapper');
+    wrappers.forEach((wrap) => {
+      if (wrap.style.display === 'none') return;
+      const bar = wrap.querySelector('.report-action-bar');
+      if (!bar) return;
+      const barRect = bar.getBoundingClientRect();
+      const wrapRect = wrap.getBoundingClientRect();
+      const isStuck = barRect.top <= stickyTop + 2 && wrapRect.bottom > barRect.bottom + 4;
+      bar.classList.toggle('is-stuck', isStuck);
+      if (isStuck) anyBarStuck = true;
+    });
+
+    if (qfb) {
+      qfb.classList.toggle('has-stuck-bar', anyBarStuck);
+    }
+  }
+
   function refreshAllUI(animateChart = false) {
     ensureValidGradeAndTeacher();
     renderSessionPills();
@@ -3251,6 +3278,7 @@
     renderTopStudentsSection();
     renderAbsentAndSearchSection();
     renderAllSubjectsOverview();
+    syncStickyReportActionBars();
   }
 
   function showToast(msg) {
@@ -3555,6 +3583,7 @@
     document.getElementById('btnBatchExportAll')?.addEventListener('click', batchExportAllSubjects);
     document.getElementById('btnBatchExportFromGrid')?.addEventListener('click', batchExportAllSubjects);
 
+    window.addEventListener('scroll', syncStickyReportActionBars, { passive: true });
     window.addEventListener('resize', () => {
       syncSidebarToggleLabel();
       refreshAllUI(false);
