@@ -2230,7 +2230,7 @@
             </div>
             <div style="display:flex; gap:5px;">
               <button type="button" class="btn btn-outline btn-sm" data-focus-subj="${escapeHtml(subj)}"><i class="fa-solid fa-expand"></i> Chi tiết</button>
-              <button type="button" class="btn btn-primary btn-sm" data-export-subj="${escapeHtml(subj)}"><i class="fa-solid fa-download"></i> 4K</button>
+              <button type="button" class="btn btn-primary btn-sm" data-export-subj="${escapeHtml(subj)}"><i class="fa-solid fa-download"></i> 6K</button>
             </div>
           </div>
         </div>
@@ -2378,10 +2378,10 @@
   }
 
   // ============================================================================
-  // ULTRA-HD 4K / 6K / SVG EXPORTERS
+  // ULTRA-HD 6K EXPORTERS (Default 6K PNG)
   // ============================================================================
   function getExportSettings() {
-    const scale = parseInt(document.getElementById('exportQualitySelect')?.value || '4', 10);
+    const scale = parseInt(document.getElementById('exportQualitySelect')?.value || '6', 10);
     const format = document.getElementById('exportFormatSelect')?.value || 'png';
     return { scale, format };
   }
@@ -2998,7 +2998,7 @@
       const selectedG = state.overviewSelectedGrades[subj] || getGradesForSubject(sess, subj)[0];
       if (selectedG) tasks.push({ subj, grade: selectedG });
     });
-    showToast(`Đang tải ${tasks.length} ảnh phổ điểm 4K...`);
+    showToast(`Đang tải ${tasks.length} ảnh phổ điểm 6K...`);
     tasks.forEach((t, i) => {
       setTimeout(() => {
         exportHighResPhoDiemCard(sess, t.subj, 'ALL', t.grade);
