@@ -7,6 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
   <link rel="stylesheet" href="styles.css" />
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
@@ -181,30 +182,35 @@
     </section>
 
     <!-- ====================================================================
-         PROMINENT QUICK FILTER BAR (Khối thi, Giáo viên, Chia cột điểm)
+         COMPACT & REFINED QUICK FILTER BAR (Khối thi, Giáo viên, Chia cột điểm)
          ==================================================================== -->
     <section class="quick-filter-banner">
-      <!-- Row 1: Quick Pills for Khối thi (No "All Grades" — always per individual Grade) + Chia cột điểm -->
+      <!-- Row 1: Khối thi + Chia cột điểm -->
       <div class="filter-row-line">
         <div class="filter-pill-group" id="quickGradePills">
           <!-- Populated dynamically with clickable pills for each Grade of the Subject -->
         </div>
 
-        <div class="filter-pill-group">
-          <span class="filter-group-label">Khoảng điểm:</span>
-          <button type="button" class="choice-pill bin-step-pill active" data-step="0.5">0.5đ</button>
-          <button type="button" class="choice-pill bin-step-pill" data-step="0.25">0.25đ</button>
-          <button type="button" class="choice-pill bin-step-pill" data-step="1.0">1.0đ</button>
+        <div class="filter-pill-group qf-right-tools">
+          <span class="filter-group-label" title="Độ rộng mỗi cột điểm">
+            <i class="fa-solid fa-sliders"></i> Cột
+          </span>
+          <div class="qf-segmented-group">
+            <button type="button" class="choice-pill bin-step-pill active" data-step="0.5">0.5đ</button>
+            <button type="button" class="choice-pill bin-step-pill" data-step="0.25">0.25đ</button>
+            <button type="button" class="choice-pill bin-step-pill" data-step="1.0">1.0đ</button>
+          </div>
 
-          <label class="choice-pill" style="cursor: pointer; user-select: none; margin-left: 4px;">
-            <input type="checkbox" id="toggleBellCurve" checked style="margin-right: 3px;" />
-            <span>Đường phân phối & ĐTB</span>
+          <label class="choice-pill qf-curve-pill" title="Hiển thị đường xu thế phân phối và Điểm trung bình">
+            <input type="checkbox" id="toggleBellCurve" checked />
+            <i class="fa-solid fa-wave-square"></i>
+            <span>Xu thế & ĐTB</span>
           </label>
         </div>
       </div>
 
-      <!-- Row 2: Quick Pills for Giáo viên dạy Khối đang chọn -->
-      <div class="filter-row-line" style="border-top: 1px dashed #e2e8f0; padding-top: 8px;">
+      <!-- Row 2: Giáo viên dạy Khối đang chọn -->
+      <div class="filter-row-line qf-teacher-row">
         <div class="filter-pill-group" id="quickTeacherPills">
           <!-- Populated dynamically with clickable pills for each Teacher of that Grade -->
         </div>
