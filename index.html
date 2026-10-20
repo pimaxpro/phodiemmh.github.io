@@ -36,77 +36,75 @@
     <div class="sidebar-brand">
       <div class="brand-logo">MH</div>
       <div class="brand-text">
-        <h1>TRUNG TÂM MINH HOÀNG</h1>
-        <span>Hệ thống Phổ điểm Thi</span>
+        <h1>MINH HOÀNG</h1>
+        <span>Phổ điểm Thi</span>
       </div>
-      <button type="button" class="sidebar-collapse-btn" id="btnCloseSidebar" title="Ẩn thanh menu bên trái">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" width="18" height="18">
-          <polyline points="15 18 9 12 15 6"/>
-        </svg>
+      <button type="button" class="sidebar-collapse-btn" id="btnCloseSidebar" title="Ẩn thanh menu">
+        <i class="fa-solid fa-angles-left"></i>
       </button>
     </div>
 
     <div class="sidebar-scroll">
       <!-- 1. Subject Selector -->
       <div class="sidebar-group">
-        <div class="sidebar-label">Chọn Bộ môn</div>
+        <div class="sidebar-label"><i class="fa-solid fa-book-open"></i> Bộ môn</div>
         <div class="subject-tabs" id="subjectTabsContainer"></div>
       </div>
 
       <!-- 2. View Mode Menu -->
       <div class="sidebar-group">
-        <div class="sidebar-label">Danh mục báo cáo</div>
+        <div class="sidebar-label"><i class="fa-solid fa-compass"></i> Danh mục</div>
         <div class="view-mode-tabs" id="viewModeTabs">
           <button class="view-mode-btn active" data-view="all">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
-            Tất cả báo cáo
+            <i class="fa-solid fa-border-all"></i>
+            <span>Tất cả</span>
           </button>
           <button class="view-mode-btn" data-view="phodiem">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
-            Phổ điểm THPT QG
+            <i class="fa-solid fa-chart-column"></i>
+            <span>Phổ điểm</span>
           </button>
           <button class="view-mode-btn" data-view="multisession">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-            So sánh các lần thi
+            <i class="fa-solid fa-chart-line"></i>
+            <span>So sánh đợt thi</span>
           </button>
           <button class="view-mode-btn" data-view="grouprank">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-            Thống kê Khối & GV
+            <i class="fa-solid fa-users-rectangle"></i>
+            <span>Khối & Giáo viên</span>
           </button>
           <button class="view-mode-btn" data-view="topstudents">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-            Top điểm cao nhất
+            <i class="fa-solid fa-trophy"></i>
+            <span>Top điểm cao</span>
           </button>
           <button class="view-mode-btn" data-view="absent">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
-            DS Vắng thi (x) & Tra cứu
+            <i class="fa-solid fa-list-check"></i>
+            <span>Bảng điểm & Vắng</span>
           </button>
           <button class="view-mode-btn" data-view="allsubjects">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
-            Toàn cảnh các môn
+            <i class="fa-solid fa-grip"></i>
+            <span>Toàn cảnh các môn</span>
           </button>
         </div>
       </div>
 
       <!-- 3. Image Export Settings -->
       <div class="sidebar-group">
-        <div class="sidebar-label">Cài đặt xuất ảnh</div>
-        <div class="sidebar-controls">
+        <div class="sidebar-label"><i class="fa-solid fa-camera"></i> Xuất ảnh</div>
+        <div class="sidebar-controls sidebar-controls-compact">
           <div class="control-group">
-            <label for="exportQualitySelect">Độ nét ảnh tải về</label>
+            <label for="exportQualitySelect">Độ nét</label>
             <select id="exportQualitySelect">
-              <option value="4" selected>4K Ultra-HD (Siêu nét)</option>
-              <option value="6">6K In ấn</option>
-              <option value="2">2K Full HD</option>
+              <option value="4" selected>4K</option>
+              <option value="6">6K</option>
+              <option value="2">2K</option>
             </select>
           </div>
 
           <div class="control-group">
-            <label for="exportFormatSelect">Định dạng ảnh</label>
+            <label for="exportFormatSelect">Định dạng</label>
             <select id="exportFormatSelect">
-              <option value="png" selected>PNG (Không nén)</option>
-              <option value="jpeg">JPG (100%)</option>
-              <option value="svg">SVG (Vector)</option>
+              <option value="png" selected>PNG</option>
+              <option value="jpeg">JPG</option>
+              <option value="svg">SVG</option>
             </select>
           </div>
         </div>
@@ -120,63 +118,36 @@
   <main class="main-wrapper">
 
     <!-- ====================================================================
-         TOP MENU BAR:
-         1. Dropdown chọn Lần thi do ADMIN cung cấp (L1.xlsx, L2.xlsx, L3.xlsx...)
-         2. Chế độ xem Danh sách điểm / So sánh các lần thi
-         3. Tự Upload dữ liệu điểm (.XLSX, .CSV) hoặc nạp nhanh L2, L3, L4...
+         COMPACT TOP COMMAND BAR
          ==================================================================== -->
     <section class="top-command-bar card-panel">
-      <div class="top-cmd-row">
-        <!-- Left: Toggle Sidebar Button + Dropdown chọn Lần thi -->
-        <div class="top-cmd-block top-cmd-session">
-          <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-            <button type="button" class="btn btn-outline btn-sm sidebar-toggle-trigger" id="btnToggleSidebar" title="Ẩn / Hiện thanh menu bên trái">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
-                <line x1="3" y1="6" x2="21" y2="6"/>
-                <line x1="3" y1="12" x2="21" y2="12"/>
-                <line x1="3" y1="18" x2="21" y2="18"/>
-              </svg>
-              <span id="toggleSidebarBtnText">Ẩn menu</span>
-            </button>
-            <div class="top-cmd-label">
-              <span>Chọn dữ liệu thi:</span>
-            </div>
+      <div class="top-cmd-inline">
+        <!-- Left: Toggle Sidebar + Session Selector -->
+        <div class="top-cmd-left">
+          <button type="button" class="btn btn-outline btn-sm sidebar-toggle-trigger" id="btnToggleSidebar" title="Ẩn / Hiện menu trái">
+            <i class="fa-solid fa-bars"></i>
+            <span id="toggleSidebarBtnText">Ẩn menu</span>
+          </button>
+
+          <div class="top-session-picker">
+            <span class="top-cmd-label"><i class="fa-regular fa-calendar-check"></i> Đợt thi:</span>
             <select id="topSessionDropdown" class="top-session-select" title="Chọn lần thi hoặc xem so sánh"></select>
             <button type="button" class="btn btn-outline btn-sm" id="btnDeleteCurrentSession" style="display: none; color: #e11d48; border-color: #fecdd3;" title="Xóa lần thi đang chọn">
-              Xóa
+              <i class="fa-regular fa-trash-can"></i>
             </button>
           </div>
         </div>
 
-        <!-- Right: Tự Upload dữ liệu điểm hoặc nạp thêm L2, L3, L4... -->
-        <div class="top-cmd-block top-cmd-upload">
+        <!-- Right: Compact Upload Dropzone -->
+        <div class="top-cmd-right">
           <input type="file" id="fileInputHidden" accept=".csv,.xlsx,.xls" multiple style="display: none;" />
-          <div id="dropzoneArea" class="dropzone-compact" title="Kéo thả hoặc bấm để tải file điểm L2.xlsx, L3.xlsx, L4.xlsx hoặc file điểm bất kỳ">
-            <div class="dropzone-left">
-              <div class="dropzone-icon">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                  <polyline points="17 8 12 3 7 8"/>
-                  <line x1="12" y1="3" x2="12" y2="15"/>
-                </svg>
-              </div>
-              <div class="dropzone-text">
-                <h4>Tải lên File Điểm (L2, L3... / .XLSX, .CSV)</h4>
-                <p>Tự nhận diện L1, L2, L3, L4... hoặc tải file điểm riêng</p>
-              </div>
-            </div>
-            <button type="button" class="btn btn-primary btn-sm" id="btnBrowseFile">Upload điểm</button>
+          <div id="dropzoneArea" class="dropzone-pill" title="Kéo thả hoặc bấm để nạp thêm L2.xlsx, L3.xlsx... hoặc file điểm bất kỳ">
+            <i class="fa-solid fa-cloud-arrow-up dropzone-pill-icon"></i>
+            <span class="dropzone-pill-text">Nạp file điểm (L2, L3... / .XLSX, .CSV)</span>
+            <button type="button" class="btn btn-primary btn-sm" id="btnBrowseFile">
+              <i class="fa-solid fa-upload"></i> Tải lên
+            </button>
           </div>
-        </div>
-      </div>
-
-      <!-- Bottom status strip inside top menu: Shows detected Admin files & Center Name -->
-      <div class="top-cmd-footer">
-        <div id="sessionPillsContainer" class="session-pills"></div>
-        <div style="display: flex; gap: 6px; align-items: center; margin-left: auto;">
-          <span style="font-size: 12px; color: #64748b;">Đơn vị:</span>
-          <input type="text" id="centerNameInput" value="TRUNG TÂM MINH HOÀNG" style="border: 1px solid #cbd5e1; border-radius: 6px; padding: 3px 8px; font-size: 12px; width: 175px;" />
-          <button class="btn btn-outline btn-sm" id="btnResetDemoData" title="Nạp lại dữ liệu gốc L1.xlsx từ thư mục">Làm mới (L1, L2...)</button>
         </div>
       </div>
     </section>
@@ -223,14 +194,13 @@
     <section id="sectionPhoDiem" class="thpt-report-wrapper">
       <div class="report-action-bar">
         <div class="report-action-title">
-          <span style="width: 8px; height: 8px; border-radius: 50%; background: #1a5fb4;"></span>
+          <i class="fa-solid fa-chart-column" style="color: #2563eb;"></i>
           <span>Phổ điểm môn thi</span>
         </div>
         <div class="export-controls">
-          <button class="btn btn-outline btn-sm" id="btnReplayAnimation">Chạy lại Animation</button>
           <button class="btn btn-primary btn-sm" id="btnExportCurrentPhoDiem">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            Tải ảnh Phổ điểm
+            <i class="fa-solid fa-download"></i>
+            <span>Tải ảnh</span>
           </button>
         </div>
       </div>
@@ -247,8 +217,8 @@
               <canvas id="phoDiemCanvas"></canvas>
               <div id="chartTooltip" class="chart-floating-tooltip"></div>
             </div>
-            <div style="text-align: center; font-size: 11.5px; color: #64748b; margin-top: 6px; font-weight: 600;">
-              💡 Mẹo: Bấm trực tiếp vào bất kỳ cột điểm nào trên biểu đồ để xem danh sách học sinh trong cột đó
+            <div class="chart-click-hint">
+              <i class="fa-regular fa-hand-pointer"></i> Chạm vào cột điểm bất kỳ để xem danh sách thí sinh
             </div>
           </div>
 
@@ -331,27 +301,27 @@
     <section id="sectionMultiSession" class="thpt-report-wrapper">
       <div class="report-action-bar">
         <div class="report-action-title">
-          <span style="width: 8px; height: 8px; border-radius: 50%; background: #059669;"></span>
-          <span>Thống kê qua các lần thi</span>
+          <i class="fa-solid fa-chart-line" style="color: #059669;"></i>
+          <span>So sánh các đợt thi</span>
         </div>
         <div class="export-controls">
           <button class="btn btn-success btn-sm" id="btnExportMultiSession">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            Tải ảnh So sánh
+            <i class="fa-solid fa-download"></i>
+            <span>Tải ảnh</span>
           </button>
         </div>
       </div>
 
       <div class="thpt-capture-stage">
         <div class="thpt-sub-banner" id="comparisonBannerTitle">
-          CÁC CHỈ SỐ THỐNG KÊ QUA CÁC LẦN THI
+          SO SÁNH QUA CÁC ĐỢT THI
         </div>
 
         <div class="thpt-comparison-table-wrap">
           <table class="thpt-comparison-table" id="multiSessionComparisonTable"></table>
         </div>
 
-        <div style="margin-top: 18px;">
+        <div style="margin-top: 16px;">
           <div class="thpt-chart-box" style="min-height: 310px;">
             <div class="thpt-chart-canvas-wrap" style="height: 290px;">
               <canvas id="multiSessionCanvas"></canvas>
@@ -367,22 +337,26 @@
     <section id="sectionGroupRanking" class="thpt-report-wrapper">
       <div class="report-action-bar">
         <div class="report-action-title">
-          <span style="width: 8px; height: 8px; border-radius: 50%; background: #7c3aed;"></span>
-          <span>Thống kê theo Khối lớp & Giáo viên</span>
+          <i class="fa-solid fa-users-rectangle" style="color: #7c3aed;"></i>
+          <span>Khối lớp & Giáo viên</span>
         </div>
         <div class="export-controls">
           <div class="sub-nav-pills" id="groupStatModeTabs">
-            <button type="button" class="sub-nav-btn active" data-gmode="teacher_by_grade">1. Theo từng Khối của Giáo viên</button>
-            <button type="button" class="sub-nav-btn" data-gmode="grade_summary">2. ĐTB & Điểm cao nhất từng Khối</button>
+            <button type="button" class="sub-nav-btn active" data-gmode="teacher_by_grade">
+              <i class="fa-solid fa-chalkboard-user"></i> Theo Giáo viên
+            </button>
+            <button type="button" class="sub-nav-btn" data-gmode="grade_summary">
+              <i class="fa-solid fa-layer-group"></i> Theo Khối
+            </button>
           </div>
 
-          <select id="compareGradeFilter" style="border: 1px solid #cbd5e1; border-radius: 6px; padding: 4px 8px; font-size: 12px; font-weight: 600;">
-            <option value="ALL">Tất cả các Khối</option>
+          <select id="compareGradeFilter" class="compact-select">
+            <option value="ALL">Tất cả Khối</option>
           </select>
 
           <button class="btn btn-primary btn-sm" id="btnExportGroupRanking">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            Tải ảnh Thống kê Khối/GV
+            <i class="fa-solid fa-download"></i>
+            <span>Tải ảnh</span>
           </button>
         </div>
       </div>
@@ -390,8 +364,8 @@
       <div class="thpt-capture-stage">
         <!-- Sub-view 1: So sánh ĐTB Khối của Giáo viên với ĐTB Chung của cả Nhóm -->
         <div id="subViewTeacherByGrade">
-          <div id="teacherByGradeTablesWrap" style="display: flex; flex-direction: column; gap: 18px;"></div>
-          <div style="margin-top: 18px;">
+          <div id="teacherByGradeTablesWrap" style="display: flex; flex-direction: column; gap: 16px;"></div>
+          <div style="margin-top: 16px;">
             <div class="thpt-chart-box" style="min-height: 315px;">
               <div class="thpt-chart-canvas-wrap" style="height: 295px;">
                 <canvas id="teacherGradeCompareCanvas"></canvas>
@@ -404,14 +378,14 @@
         <div id="subViewGradeSummary" style="display: none;">
           <div class="thpt-dual-tables-grid">
             <div class="thpt-rank-box">
-              <h3>ĐTB & <span class="highlight-red">ĐIỂM CAO NHẤT</span> THEO TỪNG KHỐI</h3>
+              <h3><i class="fa-solid fa-ranking-star" style="color:#2563eb; margin-right:5px;"></i>ĐTB & <span class="highlight-red">ĐIỂM CAO NHẤT</span> TỪNG KHỐI</h3>
               <table class="thpt-rank-table" id="tableGradeAvgAndMax">
                 <thead>
                   <tr>
                     <th>Khối</th>
                     <th>Dự thi</th>
                     <th>Vắng (x)</th>
-                    <th>Điểm TB Khối</th>
+                    <th>ĐTB Khối</th>
                     <th>Cao nhất</th>
                     <th>Thủ khoa Khối</th>
                   </tr>
@@ -421,7 +395,7 @@
             </div>
 
             <div class="thpt-rank-box">
-              <h3>PHÂN LOẠI <span class="highlight-red">ĐIỂM GIỎI (&gt;=8) & ĐIỂM 10</span> THEO KHỐI</h3>
+              <h3><i class="fa-solid fa-medal" style="color:#f59e0b; margin-right:5px;"></i>PHÂN LOẠI <span class="highlight-red">ĐIỂM GIỎI (&gt;=8) & ĐIỂM 10</span></h3>
               <table class="thpt-rank-table" id="tableGradeQuality">
                 <thead>
                   <tr>
@@ -446,39 +420,44 @@
     <section id="sectionTopStudents" class="thpt-report-wrapper">
       <div class="report-action-bar">
         <div class="report-action-title">
-          <span style="width: 8px; height: 8px; border-radius: 50%; background: #f59e0b;"></span>
-          <span>Danh sách Top học sinh điểm cao nhất</span>
+          <i class="fa-solid fa-trophy" style="color: #f59e0b;"></i>
+          <span>Top điểm cao</span>
         </div>
         <div class="export-controls">
-          <div style="display: flex; align-items: center; gap: 6px; background: #fffbeb; padding: 3px 9px; border-radius: 7px; border: 1px solid #fde68a;">
-            <label for="topNInput" style="font-size: 12px; font-weight: 700; color: #92400e;">Số lượng Top:</label>
-            <input type="number" id="topNInput" value="20" min="1" max="500" style="width: 58px; border: 1px solid #f59e0b; border-radius: 5px; padding: 2px 6px; font-weight: 800; color: #b45309; text-align: center;" />
+          <div class="top-n-badge-box">
+            <i class="fa-solid fa-crown" style="color:#d97706; font-size:11px;"></i>
+            <label for="topNInput">Top</label>
+            <input type="number" id="topNInput" value="20" min="1" max="500" />
           </div>
 
-          <div style="display: flex; align-items: center; gap: 4px;">
-            <button type="button" class="btn btn-outline btn-sm quick-top-btn" data-top="5">5</button>
-            <button type="button" class="btn btn-outline btn-sm quick-top-btn" data-top="10">10</button>
-            <button type="button" class="btn btn-outline btn-sm quick-top-btn" data-top="20">20</button>
-            <button type="button" class="btn btn-outline btn-sm quick-top-btn" data-top="50">50</button>
+          <div class="qf-segmented-group">
+            <button type="button" class="choice-pill quick-top-btn" data-top="5">5</button>
+            <button type="button" class="choice-pill quick-top-btn" data-top="10">10</button>
+            <button type="button" class="choice-pill quick-top-btn active" data-top="20">20</button>
+            <button type="button" class="choice-pill quick-top-btn" data-top="50">50</button>
           </div>
 
-          <label style="display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; cursor: pointer;">
+          <label class="choice-pill qf-curve-pill">
             <input type="checkbox" id="includeTiesCheckbox" checked />
             <span>Đồng hạng</span>
           </label>
 
-          <label style="display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; cursor: pointer;">
+          <label class="choice-pill qf-curve-pill">
             <input type="checkbox" id="showAllSubjectsTopCheckbox" />
             <span>Tất cả môn</span>
           </label>
 
-          <button class="btn btn-outline btn-sm" id="btnExportTopCSV">Xuất CSV</button>
-          <button class="btn btn-accent btn-sm" id="btnExportTopStudentsImg">Tải ảnh Top HS</button>
+          <button class="btn btn-outline btn-sm" id="btnExportTopCSV" title="Xuất file CSV">
+            <i class="fa-solid fa-file-csv"></i> CSV
+          </button>
+          <button class="btn btn-accent btn-sm" id="btnExportTopStudentsImg">
+            <i class="fa-solid fa-download"></i> Tải ảnh
+          </button>
         </div>
       </div>
 
       <div class="thpt-capture-stage">
-        <div id="topStudentsContainer" style="display: flex; flex-direction: column; gap: 16px;"></div>
+        <div id="topStudentsContainer" style="display: flex; flex-direction: column; gap: 14px;"></div>
       </div>
     </section>
 
@@ -488,26 +467,33 @@
     <section id="sectionAbsentAndSearch" class="thpt-report-wrapper">
       <div class="report-action-bar">
         <div class="report-action-title">
-          <span style="width: 8px; height: 8px; border-radius: 50%; background: #e11d48;"></span>
-          <span>Danh sách Điểm Học sinh của Lần thi & Thống kê Vắng thi (x)</span>
+          <i class="fa-solid fa-list-check" style="color: #e11d48;"></i>
+          <span>Bảng điểm & Vắng thi</span>
         </div>
         <div class="export-controls">
-          <input type="text" id="studentSearchInput" placeholder="Tìm tên học sinh hoặc giáo viên..." style="border: 1px solid #cbd5e1; border-radius: 6px; padding: 5px 10px; font-size: 12.5px; width: 220px;" />
-          <select id="studentStatusFilter" style="border: 1px solid #cbd5e1; border-radius: 6px; padding: 5px 8px; font-size: 12.5px; font-weight: 700; color: #1e3a8a;">
-            <option value="ALL" selected>Tất cả danh sách điểm (Dự thi + Vắng x)</option>
-            <option value="SCORED">Chỉ học sinh có điểm (Dự thi)</option>
-            <option value="GT9">Học sinh điểm trên 9 (&gt;= 9.0)</option>
-            <option value="LT5">Học sinh dưới 5 (&lt; 5.0 - Điểm đỏ)</option>
-            <option value="ABSENT">Chỉ học sinh Vắng thi (dấu x)</option>
+          <div class="search-input-wrap">
+            <i class="fa-solid fa-magnifying-glass"></i>
+            <input type="text" id="studentSearchInput" placeholder="Tìm học sinh, giáo viên..." />
+          </div>
+          <select id="studentStatusFilter" class="compact-select">
+            <option value="ALL" selected>Tất cả học sinh</option>
+            <option value="SCORED">Có điểm dự thi</option>
+            <option value="GT9">Điểm &gt;= 9.0 (Nổi bật)</option>
+            <option value="LT5">Điểm &lt; 5.0 (Điểm đỏ)</option>
+            <option value="ABSENT">Vắng thi (dấu x)</option>
           </select>
-          <button class="btn btn-outline btn-sm" id="btnExportAbsentCSV">Xuất CSV DS Điểm / Vắng</button>
-          <button class="btn btn-primary btn-sm" id="btnExportAbsentImg">Tải ảnh Bảng Điểm</button>
+          <button class="btn btn-outline btn-sm" id="btnExportAbsentCSV" title="Xuất file CSV">
+            <i class="fa-solid fa-file-csv"></i> CSV
+          </button>
+          <button class="btn btn-primary btn-sm" id="btnExportAbsentImg">
+            <i class="fa-solid fa-download"></i> Tải ảnh
+          </button>
         </div>
       </div>
 
       <div class="thpt-capture-stage">
-        <div id="absentSummaryStrip" style="display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 12px;"></div>
-        <div style="overflow-x: auto; background: #fff; border: 1px solid #b6c2d6;">
+        <div id="absentSummaryStrip" style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px;"></div>
+        <div style="overflow-x: auto; background: #fff; border: 1px solid #cbd5e1; border-radius: 10px;">
           <table class="thpt-rank-table" id="tableAbsentStudents">
             <thead>
               <tr>
@@ -516,8 +502,8 @@
                 <th style="width: 90px;">Khối</th>
                 <th style="width: 150px;">Bộ môn</th>
                 <th style="width: 150px;">Giáo viên</th>
-                <th style="width: 140px;">Trạng thái / Điểm</th>
-                <th style="width: 130px;">Đổi nhanh</th>
+                <th style="width: 140px;">Điểm / TT</th>
+                <th style="width: 120px;">Thao tác</th>
               </tr>
             </thead>
             <tbody></tbody>
@@ -532,11 +518,13 @@
     <section id="sectionAllSubjectsOverview" class="thpt-report-wrapper">
       <div class="report-action-bar">
         <div class="report-action-title">
-          <span style="width: 8px; height: 8px; border-radius: 50%; background: #0284c7;"></span>
+          <i class="fa-solid fa-grip" style="color: #0284c7;"></i>
           <span>Toàn cảnh các môn</span>
         </div>
         <div class="export-controls">
-          <button class="btn btn-primary btn-sm" id="btnBatchExportFromGrid">Tải trọn bộ ảnh 4K</button>
+          <button class="btn btn-primary btn-sm" id="btnBatchExportFromGrid">
+            <i class="fa-solid fa-images"></i> Tải bộ ảnh 4K
+          </button>
         </div>
       </div>
 
