@@ -20,7 +20,7 @@
     overviewSelectedGrades: {}, // { [subject]: grade } for "Toàn cảnh các môn"
     binStep: 0.5,
     showBellCurve: true,
-    topN: 20,
+    topN: 0, // 0 = Tất cả học sinh, >0 = Giới hạn Top N điểm cao
     includeTies: true,
     showAllSubjectsTop: false,
     groupStatMode: 'teacher_by_grade',
@@ -2003,27 +2003,68 @@
   // ============================================================================
   // SECTION 4: TOP N HIGHEST SCORING STUDENTS (Scoped to Subject & Grade)
   // ============================================================================
-  function getTopStudentsForSubject(sess, subject, topN, includeTies, teacherFilter = 'ALL', gradeFilter = null) {
-    const recs = getFilteredRecords(sess, subject, teacherFilter, gradeFilter).filter(
-      (r) => !r.absent && r.score !== null && !isNaN(r.score)
-    );
-    recs.sort((a, b) => b.score - a.score || a.name.localeCompare(b.name, 'vi'));
+  // ============================================================================
+  // SECTION 4: BẢNG ĐIỂM, XẾP HẠNG TOP & VẮNG THI (GỘP CHUNG 1 BẢNG ĐA NĂNG)
+  // ============================================================================
+  function getUnifiedStudentList(sess, subject, topN, includeTies, teacherFilter = 'ALL', gradeFilter = null) {
+    const allRecs = getFilteredRecords(sess, subject, teacherFilter, gradeFilter);
+    const scored = allRecs
+      .filter((r) => !r.absent && r.score !== null && !isNaN(r.score))
+      .slice()
+      .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name, 'vi'));
+    const absentList = allRecs
+      .filter((r) => r.absent || r.score === null || isNaN(r.score))
+      .slice()
+      .sort((a, b) => a.name.localeCompare(b.name, 'vi'))
+      .map((r) => Object.assign({}, r, { rank: null, isAbsent: true }));
 
-    const result = [];
+    // Assign standard competition rank (1, 2, 2, 4...) to all scored students
+    const rankedScored = [];
     let currentRank = 1;
-    for (let i = 0; i < recs.length; i++) {
-      if (i > 0 && Math.abs(recs[i].score - recs[i - 1].score) > 1e-9) {
+    for (let i = 0; i < scored.length; i++) {
+      if (i > 0 && Math.abs(scored[i].score - scored[i - 1].score) > 1e-9) {
         currentRank = i + 1;
       }
-      if (i < topN) {
-        result.push(Object.assign({}, recs[i], { rank: currentRank }));
-      } else if (includeTies && result.length > 0 && Math.abs(recs[i].score - result[result.length - 1].score) < 1e-9) {
-        result.push(Object.assign({}, recs[i], { rank: currentRank }));
-      } else {
-        break;
-      }
+      rankedScored.push(Object.assign({}, scored[i], { rank: currentRank, isAbsent: false }));
     }
-    return { list: result, totalTested: recs.length };
+
+    // Apply Top N limit if topN > 0 (and not specifically filtering ABSENT)
+    let workingList = [];
+    if (topN > 0 && state.studentStatusFilter !== 'ABSENT') {
+      for (let i = 0; i < rankedScored.length; i++) {
+        if (i < topN) {
+          workingList.push(rankedScored[i]);
+        } else if (
+          includeTies &&
+          workingList.length > 0 &&
+          Math.abs(rankedScored[i].score - workingList[workingList.length - 1].score) < 1e-9
+        ) {
+          workingList.push(rankedScored[i]);
+        } else {
+          break;
+        }
+      }
+    } else {
+      workingList = rankedScored.concat(absentList);
+    }
+
+    // Apply status filter (ALL, SCORED, GT9, LT5, ABSENT) & search query
+    const q = state.studentSearchQuery.trim().toLowerCase();
+    const finalFiltered = workingList.filter((r) => {
+      if (state.studentStatusFilter === 'SCORED' && r.isAbsent) return false;
+      if (state.studentStatusFilter === 'ABSENT' && !r.isAbsent) return false;
+      if (state.studentStatusFilter === 'LT5' && (r.isAbsent || r.score >= 5)) return false;
+      if (state.studentStatusFilter === 'GT9' && (r.isAbsent || r.score < 9)) return false;
+      if (q && !r.name.toLowerCase().includes(q) && !r.teacher.toLowerCase().includes(q)) return false;
+      return true;
+    });
+
+    return {
+      list: finalFiltered,
+      totalRoster: allRecs.length,
+      totalTested: rankedScored.length,
+      totalAbsent: absentList.length,
+    };
   }
 
   function renderTopStudentsSection() {
@@ -2031,7 +2072,55 @@
     const container = document.getElementById('topStudentsContainer');
     if (!sess || !container) return;
 
-    const topN = Math.max(1, parseInt(state.topN, 10) || 20);
+    // 1. Render Interactive Summary Strip (#absentSummaryStrip)
+    const baseRecs = getFilteredRecords(sess, state.currentSubject, state.filterTeacher, state.filterGrade);
+    const totalAbsent = baseRecs.filter((r) => r.absent || r.score === null).length;
+    const totalScored = baseRecs.length - totalAbsent;
+    const totalLt5 = baseRecs.filter((r) => !r.absent && r.score !== null && r.score < 5).length;
+    const totalGt9 = baseRecs.filter((r) => !r.absent && r.score !== null && r.score >= 9).length;
+
+    const strip = document.getElementById('absentSummaryStrip');
+    if (strip) {
+      const teachers = Array.from(new Set(baseRecs.map((r) => r.teacher)));
+      const curSt = state.studentStatusFilter;
+      const chipStyle = (key, baseBg, baseColor, baseBorder) =>
+        curSt === key
+          ? `cursor:pointer; background:${baseColor}; color:#ffffff; border-color:${baseColor}; box-shadow:0 2px 6px rgba(39,57,124,0.18);`
+          : `cursor:pointer; background:${baseBg}; color:${baseColor}; border-color:${baseBorder};`;
+
+      strip.innerHTML =
+        `<span class="mini-stat-chip" data-status-chip="ALL" style="${chipStyle('ALL', '#eef1f8', '#27397c', '#b8c4e6')}" title="Bấm để xem tất cả học sinh"><i class="fa-solid fa-users"></i> Tất cả: <b>${baseRecs.length}</b> (${totalScored} dự thi)</span>` +
+        `<span class="mini-stat-chip" data-status-chip="GT9" style="${chipStyle('GT9', '#eef1f8', '#27397c', '#b8c4e6')}" title="Bấm để lọc học sinh Trên 9 (>= 9.0)"><i class="fa-solid fa-star"></i> Trên 9 (&gt;= 9.0): <b>${totalGt9}</b></span>` +
+        `<span class="mini-stat-chip" data-status-chip="LT5" style="${chipStyle('LT5', '#fef2ec', '#ee642c', '#fbd5c4')}" title="Bấm để lọc học sinh Dưới 5 (< 5.0)"><i class="fa-solid fa-circle-exclamation"></i> Dưới 5 (&lt; 5.0): <b>${totalLt5}</b></span>` +
+        `<span class="mini-stat-chip" data-status-chip="ABSENT" style="${chipStyle('ABSENT', '#fef2ec', '#ee642c', '#fbd5c4')}" title="Bấm để lọc học sinh Vắng thi (x)"><i class="fa-solid fa-user-slash"></i> Vắng (x): <b>${totalAbsent}/${baseRecs.length}</b></span>` +
+        teachers
+          .map((t) => {
+            const cnt = baseRecs.filter((r) => r.teacher === t && (r.absent || r.score === null)).length;
+            return `<span class="mini-stat-chip" style="background:#ffffff; border-color:#cbd5e1; color:#27397c;"><i class="fa-regular fa-user"></i> ${escapeHtml(t)}: <b style="color:#ee642c;">${cnt}</b> vắng</span>`;
+          })
+          .join('');
+
+      strip.querySelectorAll('[data-status-chip]').forEach((chip) => {
+        chip.addEventListener('click', () => {
+          const val = chip.getAttribute('data-status-chip') || 'ALL';
+          state.studentStatusFilter = val;
+          const statusSel = document.getElementById('studentStatusFilter');
+          if (statusSel) statusSel.value = val;
+          if (val === 'ABSENT' && state.topN > 0) {
+            state.topN = 0;
+            const topNInput = document.getElementById('topNInput');
+            if (topNInput) topNInput.value = '';
+            document.querySelectorAll('.quick-top-btn').forEach((b) => {
+              b.classList.toggle('active', parseInt(b.getAttribute('data-top'), 10) === 0);
+            });
+          }
+          renderTopStudentsSection();
+        });
+      });
+    }
+
+    // 2. Render Unified Table(s)
+    const topN = Math.max(0, parseInt(state.topN, 10) || 0);
     const pairs = [];
 
     if (state.showAllSubjectsTop) {
@@ -2043,54 +2132,81 @@
       pairs.push({ subj: state.currentSubject, grade: state.filterGrade, teacher: state.filterTeacher });
     }
 
+    const statusBadgeLabelMap = {
+      ALL: topN > 0 ? `TOP ${topN} ĐIỂM CAO` : 'BẢNG ĐIỂM & XẾP HẠNG',
+      SCORED: topN > 0 ? `TOP ${topN} CÓ ĐIỂM` : 'DANH SÁCH DỰ THI',
+      GT9: 'HỌC SINH TRÊN 9 (>= 9.0)',
+      LT5: 'HỌC SINH DƯỚI 5 (< 5.0)',
+      ABSENT: 'DANH SÁCH VẮNG THI (X)',
+    };
+    const modePrefix = statusBadgeLabelMap[state.studentStatusFilter] || 'BẢNG ĐIỂM & XẾP HẠNG';
+
     let html = '';
     pairs.forEach(({ subj, grade, teacher }) => {
-      const { list, totalTested } = getTopStudentsForSubject(sess, subj, topN, state.includeTies, teacher, grade);
+      const { list, totalRoster, totalTested } = getUnifiedStudentList(
+        sess,
+        subj,
+        topN,
+        state.includeTies,
+        teacher,
+        grade
+      );
       const tLabel = teacher !== 'ALL' ? ` • GV ${teacher}` : '';
 
       html += `
         <div class="thpt-rank-box animate-fade-in">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:8px;">
             <h3 style="margin-bottom:0;">
-              <i class="fa-solid fa-crown" style="color:#ee642c; margin-right:5px;"></i>TOP <span class="highlight-red">${topN}</span> — <span class="highlight-red">${escapeHtml(subj.toUpperCase())} (KHỐI ${escapeHtml(String(grade))})</span>${escapeHtml(tLabel)}
+              <i class="fa-solid fa-crown" style="color:#ee642c; margin-right:5px;"></i><span class="highlight-red">${escapeHtml(modePrefix)}</span> — <span style="color:#27397c;">${escapeHtml(subj.toUpperCase())} (KHỐI ${escapeHtml(String(grade))})</span>${escapeHtml(tLabel)}
             </h3>
             <span class="mini-stat-chip">
-              <i class="fa-solid fa-users"></i> ${list.length} / ${totalTested} TS
+              <i class="fa-solid fa-users"></i> Hiển thị: <b>${list.length}</b> / ${totalTested} dự thi (${totalRoster} ĐK)
             </span>
           </div>
           <div style="overflow-x:auto; border-radius:10px; border:1px solid #cbd5e1;">
             <table class="thpt-rank-table">
               <thead>
                 <tr>
-                  <th style="width:55px;">#</th>
+                  <th style="width:55px;">Hạng</th>
                   <th style="text-align:left;">Học sinh</th>
-                  <th style="width:90px;">Khối</th>
-                  <th style="width:165px;">Giáo viên</th>
-                  <th style="width:115px;">Ngày thi</th>
-                  <th style="width:105px;">Điểm</th>
+                  <th style="width:85px;">Khối</th>
+                  <th style="width:135px;">Bộ môn</th>
+                  <th style="width:155px;">Giáo viên</th>
+                  <th style="width:110px;">Ngày thi</th>
+                  <th style="width:120px;">Điểm / TT</th>
                 </tr>
               </thead>
               <tbody>
                 ${
                   list.length === 0
-                    ? `<tr><td colspan="6" style="text-align:center; padding:16px; color:#64748b;">Không có dữ liệu</td></tr>`
+                    ? `<tr><td colspan="7" style="text-align:center; padding:18px; color:#64748b; font-weight:600;">Không có học sinh nào khớp bộ lọc hiện tại</td></tr>`
                     : list
-                        .map((item) => {
-                          let rankBadge = `<b>${item.rank}</b>`;
-                          if (item.rank === 1) rankBadge = `<span class="rank-medal rank-1">1</span>`;
-                          else if (item.rank === 2) rankBadge = `<span class="rank-medal rank-2">2</span>`;
-                          else if (item.rank === 3) rankBadge = `<span class="rank-medal rank-3">3</span>`;
+                        .map((item, idx) => {
+                          const isAbs = item.isAbsent || item.absent || item.score === null;
+                          let rankBadge = '-';
+                          if (!isAbs && item.rank !== null) {
+                            if (item.rank === 1) rankBadge = `<span class="rank-medal rank-1">1</span>`;
+                            else if (item.rank === 2) rankBadge = `<span class="rank-medal rank-2">2</span>`;
+                            else if (item.rank === 3) rankBadge = `<span class="rank-medal rank-3">3</span>`;
+                            else rankBadge = `<b>${item.rank}</b>`;
+                          } else {
+                            rankBadge = `<span style="color:#ee642c; font-weight:800;">KĐ</span>`;
+                          }
 
-                          const hl = getStudentHighlightMeta(item.score, false);
+                          const hl = getStudentHighlightMeta(item.score, isAbs);
+                          const badgeHtml = isAbs
+                            ? `<span class="score-pill-badge score-absent">x (Vắng)</span>`
+                            : `<span class="score-pill-badge ${hl.scoreClass}">${fmtFixed(item.score, 2)}</span>`;
 
                           return `
                             <tr class="${hl.rowClass}">
                               <td class="stt-col">${rankBadge}</td>
                               <td class="${hl.nameClass}" style="font-weight:700;">${escapeHtml(item.name)}${hl.nameTagHtml}</td>
                               <td class="num-col">Khối ${escapeHtml(String(item.grade))}</td>
+                              <td class="num-col">${escapeHtml(item.subject)}</td>
                               <td class="num-col">GV ${escapeHtml(item.teacher)}</td>
                               <td class="num-col">${escapeHtml(item.examDate || sess.date || '-')}</td>
-                              <td class="num-col"><span class="score-pill-badge ${hl.scoreClass}">${fmtFixed(item.score, 2)}</span></td>
+                              <td class="num-col">${badgeHtml}</td>
                             </tr>
                           `;
                         })
@@ -2106,72 +2222,8 @@
     container.innerHTML = html;
   }
 
-  // ============================================================================
-  // SECTION 5: THỐNG KÊ THÍ SINH KHÔNG THI (DẤU X) & TRA CỨU
-  // ============================================================================
   function renderAbsentAndSearchSection() {
-    const sess = getCurrentSession();
-    if (!sess) return;
-
-    const baseRecs = getFilteredRecords(sess, state.currentSubject, state.filterTeacher, state.filterGrade);
-    const totalAbsent = baseRecs.filter((r) => r.absent || r.score === null).length;
-    const totalLt5 = baseRecs.filter((r) => !r.absent && r.score !== null && r.score < 5).length;
-    const totalGt9 = baseRecs.filter((r) => !r.absent && r.score !== null && r.score >= 9).length;
-
-    const strip = document.getElementById('absentSummaryStrip');
-    if (strip) {
-      const teachers = Array.from(new Set(baseRecs.map((r) => r.teacher)));
-      strip.innerHTML =
-        `<span class="mini-stat-chip" style="background:#eef1f8; color:#27397c; border-color:#b8c4e6;"><i class="fa-solid fa-star"></i> Trên 9 (&gt;= 9.0): <b>${totalGt9}</b></span>` +
-        `<span class="mini-stat-chip" style="background:#fef2ec; color:#ee642c; border-color:#fbd5c4;"><i class="fa-solid fa-circle-exclamation"></i> Dưới 5 (&lt; 5.0): <b>${totalLt5}</b></span>` +
-        `<span class="mini-stat-chip" style="background:#fef2ec; color:#ee642c; border-color:#fbd5c4;"><i class="fa-solid fa-user-slash"></i> Vắng (x): <b>${totalAbsent}/${baseRecs.length}</b></span>` +
-        teachers
-          .map((t) => {
-            const cnt = baseRecs.filter((r) => r.teacher === t && (r.absent || r.score === null)).length;
-            return `<span class="mini-stat-chip" style="background:#ffffff; border-color:#cbd5e1; color:#27397c;"><i class="fa-regular fa-user"></i> ${escapeHtml(t)}: <b style="color:#ee642c;">${cnt}</b> vắng</span>`;
-          })
-          .join('');
-    }
-
-    const q = state.studentSearchQuery.trim().toLowerCase();
-    const filtered = baseRecs.filter((r) => {
-      if (state.studentStatusFilter === 'SCORED' && (r.absent || r.score === null)) return false;
-      if (state.studentStatusFilter === 'ABSENT' && !(r.absent || r.score === null)) return false;
-      if (state.studentStatusFilter === 'LT5' && (r.absent || r.score === null || r.score >= 5)) return false;
-      if (state.studentStatusFilter === 'GT9' && (r.absent || r.score === null || r.score < 9)) return false;
-      if (q && !r.name.toLowerCase().includes(q) && !r.teacher.toLowerCase().includes(q)) return false;
-      return true;
-    });
-
-    const tbody = document.querySelector('#tableAbsentStudents tbody');
-    if (!tbody) return;
-
-    if (filtered.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:18px; color:#64748b;">Không có học sinh nào trong mục này</td></tr>`;
-      return;
-    }
-
-    tbody.innerHTML = filtered
-      .slice(0, 1000)
-      .map((r, idx) => {
-        const isAbs = r.absent || r.score === null;
-        const hl = getStudentHighlightMeta(r.score, isAbs);
-        const badgeHtml = isAbs
-          ? `<span class="score-pill-badge score-absent">x (Vắng)</span>`
-          : `<span class="score-pill-badge ${hl.scoreClass}">${fmtFixed(r.score, 2)}</span>`;
-
-        return `
-          <tr class="${hl.rowClass}">
-            <td class="stt-col">${idx + 1}</td>
-            <td class="${hl.nameClass}" style="font-weight:700;">${escapeHtml(r.name)}${hl.nameTagHtml}</td>
-            <td class="num-col">Khối ${escapeHtml(String(r.grade))}</td>
-            <td class="num-col">${escapeHtml(r.subject)}</td>
-            <td class="num-col">GV ${escapeHtml(r.teacher)}</td>
-            <td class="num-col">${badgeHtml}</td>
-          </tr>
-        `;
-      })
-      .join('');
+    // Unified into renderTopStudentsSection()
   }
 
   // ============================================================================
@@ -2769,11 +2821,20 @@
     const sess = getCurrentSession();
     const subj = state.currentSubject;
     const grade = state.filterGrade;
-    const topN = Math.max(1, parseInt(state.topN, 10) || 20);
-    const { list } = getTopStudentsForSubject(sess, subj, topN, state.includeTies, state.filterTeacher, grade);
+    const topN = Math.max(0, parseInt(state.topN, 10) || 0);
+    const { list } = getUnifiedStudentList(sess, subj, topN, state.includeTies, state.filterTeacher, grade);
+
+    const statusTitleMap = {
+      ALL: topN > 0 ? `TOP ${topN} HỌC SINH ĐIỂM CAO NHẤT` : 'BẢNG ĐIỂM & XẾP HẠNG HỌC SINH',
+      SCORED: topN > 0 ? `TOP ${topN} HỌC SINH DỰ THI` : 'DANH SÁCH HỌC SINH DỰ THI',
+      GT9: 'DANH SÁCH HỌC SINH ĐIỂM TRÊN 9 (>= 9.0)',
+      LT5: 'DANH SÁCH HỌC SINH ĐIỂM DƯỚI 5 (< 5.0)',
+      ABSENT: 'DANH SÁCH HỌC SINH VẮNG THI (X)',
+    };
+    const titlePrefix = statusTitleMap[state.studentStatusFilter] || 'BẢNG ĐIỂM & XẾP HẠNG HỌC SINH';
 
     const rowH = 38;
-    const baseW = 1260;
+    const baseW = 1360;
     const baseH = 140 + Math.max(list.length, 1) * rowH + 36;
 
     const canvas = document.createElement('canvas');
@@ -2787,11 +2848,11 @@
     ctx.fillRect(0, 0, baseW, baseH);
 
     ctx.fillStyle = '#27397c';
-    ctx.font = '800 23px Inter, sans-serif';
+    ctx.font = '800 22px Inter, sans-serif';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
     ctx.fillText(
-      `TOP ${topN} HỌC SINH ĐIỂM CAO NHẤT MÔN ${subj.toUpperCase()} (KHỐI ${grade}) — ${state.centerName}`,
+      `${titlePrefix} — MÔN ${subj.toUpperCase()} (KHỐI ${grade}) — ${state.centerName}`,
       40,
       26
     );
@@ -2802,8 +2863,8 @@
 
     const tx = 40;
     const ty = 92;
-    const colWidths = [75, 435, 130, 240, 160, 140];
-    const headers = ['HẠNG', 'HỌC SINH', 'KHỐI', 'GIÁO VIÊN', 'NGÀY THI', 'ĐIỂM THI'];
+    const colWidths = [70, 390, 110, 170, 220, 150, 170];
+    const headers = ['HẠNG', 'HỌC SINH', 'KHỐI', 'BỘ MÔN', 'GIÁO VIÊN', 'NGÀY THI', 'ĐIỂM / TT'];
 
     let cx = tx;
     headers.forEach((h, i) => {
@@ -2821,20 +2882,22 @@
 
     list.forEach((item, rIdx) => {
       const ry = ty + 40 + rIdx * rowH;
-      const isLt5 = item.score < 5;
-      const isGt9 = item.score >= 9;
+      const isAbs = item.isAbsent || item.absent || item.score === null;
+      const isLt5 = !isAbs && item.score < 5;
+      const isGt9 = !isAbs && item.score >= 9;
       const cells = [
-        String(item.rank),
+        !isAbs && item.rank !== null ? String(item.rank) : 'KĐ',
         item.name,
         `Khối ${item.grade}`,
+        item.subject,
         `GV ${item.teacher}`,
         item.examDate || sess.date || '-',
-        fmtFixed(item.score, 2),
+        isAbs ? 'x (Vắng)' : fmtFixed(item.score, 2),
       ];
 
       let rx = tx;
       cells.forEach((val, cIdx) => {
-        if (isLt5) {
+        if (isLt5 || isAbs) {
           ctx.fillStyle = cIdx === 0 ? '#fbd5c4' : '#fef2ec';
         } else if (isGt9) {
           ctx.fillStyle = cIdx === 0 ? '#d5dcf0' : '#eef1f8';
@@ -2845,14 +2908,14 @@
         ctx.strokeStyle = '#cbd5e1';
         ctx.strokeRect(rx, ry, colWidths[cIdx], rowH);
 
-        if (isLt5 && (cIdx === 1 || cIdx === 5)) {
+        if ((isLt5 || isAbs) && (cIdx === 1 || cIdx === 6)) {
           ctx.fillStyle = '#ee642c';
-        } else if (isGt9 && (cIdx === 1 || cIdx === 5)) {
+        } else if (isGt9 && (cIdx === 1 || cIdx === 6)) {
           ctx.fillStyle = '#27397c';
         } else {
-          ctx.fillStyle = cIdx === 0 ? '#27397c' : cIdx === 5 ? '#27397c' : '#0f172a';
+          ctx.fillStyle = cIdx === 0 ? '#27397c' : cIdx === 6 ? '#27397c' : '#0f172a';
         }
-        ctx.font = cIdx === 0 || cIdx === 1 || cIdx === 5 ? '700 14.5px Inter, sans-serif' : '500 14px Inter, sans-serif';
+        ctx.font = cIdx === 0 || cIdx === 1 || cIdx === 6 ? '700 14.5px Inter, sans-serif' : '500 14px Inter, sans-serif';
         ctx.textAlign = cIdx === 1 ? 'left' : 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(val, cIdx === 1 ? rx + 14 : rx + colWidths[cIdx] / 2, ry + rowH / 2);
@@ -2861,151 +2924,18 @@
     });
 
     ctx.restore();
-    triggerCanvasDownload(canvas, `Top_${topN}_${slugify(subj)}_Khoi_${grade}`, format === 'svg' ? 'png' : format);
-    showToast(`Đã tải ảnh Top ${topN} môn ${subj} Khối ${grade} (${scale}K)`);
-  }
-
-  function exportAbsentImage() {
-    const { scale, format } = getExportSettings();
-    const subj = state.currentSubject;
-    const grade = state.filterGrade;
-    const rows = Array.from(document.querySelectorAll('#tableAbsentStudents tbody tr'));
-
-    const baseW = 1180;
-    const baseH = 140 + Math.max(rows.length, 1) * 38 + 36;
-    const canvas = document.createElement('canvas');
-    canvas.width = baseW * scale;
-    canvas.height = baseH * scale;
-    const ctx = canvas.getContext('2d');
-    ctx.save();
-    ctx.scale(scale, scale);
-
-    ctx.fillStyle = '#f8fafc';
-    ctx.fillRect(0, 0, baseW, baseH);
-
-    ctx.fillStyle = '#27397c';
-    ctx.font = '800 22px Inter, sans-serif';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'top';
-    ctx.fillText(`DANH SÁCH THÍ SINH VẮNG THI (X) MÔN ${subj.toUpperCase()} (KHỐI ${grade}) — ${state.centerName}`, 40, 26);
-
-    const colWidths = [65, 380, 110, 180, 200, 165];
-    const headers = ['STT', 'HỌC SINH', 'KHỐI', 'BỘ MÔN', 'GIÁO VIÊN', 'TRẠNG THÁI'];
-    const rh = 38;
-    const ty = 78;
-    let cx = 40;
-    headers.forEach((h, i) => {
-      ctx.fillStyle = '#27397c';
-      ctx.fillRect(cx, ty, colWidths[i], rh);
-      ctx.strokeStyle = '#1d2b61';
-      ctx.strokeRect(cx, ty, colWidths[i], rh);
-      ctx.fillStyle = '#ffffff';
-      ctx.font = '700 14px Inter, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(h, cx + colWidths[i] / 2, ty + rh / 2);
-      cx += colWidths[i];
-    });
-
-    rows.forEach((tr, rIdx) => {
-      const cells = Array.from(tr.querySelectorAll('td')).slice(0, 6).map((td) => td.textContent.trim());
-      if (cells.length < 6) return;
-      const isLt5 = tr.classList.contains('row-student-lt5');
-      const isGt9 = tr.classList.contains('row-student-gt9');
-      const ry = ty + (rIdx + 1) * rh;
-      let rx = 40;
-      cells.forEach((val, cIdx) => {
-        if (isLt5) {
-          ctx.fillStyle = cIdx === 0 ? '#fbd5c4' : '#fef2ec';
-        } else if (isGt9) {
-          ctx.fillStyle = cIdx === 0 ? '#d5dcf0' : '#eef1f8';
-        } else {
-          ctx.fillStyle = cIdx === 0 ? '#eef1f8' : rIdx % 2 === 0 ? '#f8fafc' : '#ffffff';
-        }
-        ctx.fillRect(rx, ry, colWidths[cIdx], rh);
-        ctx.strokeStyle = '#cbd5e1';
-        ctx.strokeRect(rx, ry, colWidths[cIdx], rh);
-        if (isLt5 && (cIdx === 1 || cIdx === 5)) {
-          ctx.fillStyle = '#ee642c';
-        } else if (isGt9 && (cIdx === 1 || cIdx === 5)) {
-          ctx.fillStyle = '#27397c';
-        } else {
-          ctx.fillStyle = cIdx === 0 ? '#27397c' : cIdx === 5 ? '#ee642c' : '#0f172a';
-        }
-        ctx.font = cIdx === 0 || cIdx === 1 || cIdx === 5 ? '700 14px Inter, sans-serif' : '500 14px Inter, sans-serif';
-        ctx.textAlign = cIdx === 1 ? 'left' : 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(val, cIdx === 1 ? rx + 12 : rx + colWidths[cIdx] / 2, ry + rh / 2);
-        rx += colWidths[cIdx];
-      });
-    });
-
-    ctx.restore();
-    triggerCanvasDownload(canvas, `DS_Vang_Thi_${slugify(subj)}_Khoi_${grade}`, format === 'svg' ? 'png' : format);
-    showToast(`Đã tải ảnh Danh sách Vắng thi (${scale}K)`);
-  }
-
-  function exportAbsentCSV() {
-    const sess = getCurrentSession();
-    if (!sess) return;
-    const recs = getFilteredRecords(sess, state.currentSubject, state.filterTeacher, state.filterGrade).filter(
-      (r) => r.absent || r.score === null
-    );
-    const lines = ['\uFEFFSTT,HỌC SINH,KHỐI,BỘ MÔN,GIÁO VIÊN,ĐIỂM THI,ĐỢT THI'];
-    recs.forEach((r, idx) => {
-      lines.push(`${idx + 1},"${r.name}","${r.grade}","${r.subject}","${r.teacher}",x,"${sess.name}"`);
-    });
-    downloadBlob(
-      new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8' }),
-      `DS_Vang_Thi_${slugify(state.currentSubject)}_Khoi_${state.filterGrade}.csv`
-    );
-    showToast('Đã xuất CSV danh sách học sinh vắng thi (x)');
-  }
-
-  function triggerCanvasDownload(canvas, filenameBase, format) {
-    const mime = format === 'jpeg' ? 'image/jpeg' : 'image/png';
-    const ext = format === 'jpeg' ? 'jpg' : 'png';
-    canvas.toBlob((blob) => {
-      if (blob) downloadBlob(blob, `${filenameBase}.${ext}`);
-    }, mime, 1.0);
-  }
-
-  function downloadBlob(blob, filename) {
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    setTimeout(() => {
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    }, 300);
-  }
-
-  function batchExportAllSubjects() {
-    const sess = getCurrentSession();
-    if (!sess || !sess.subjects.length) return;
-    const tasks = [];
-    sess.subjects.forEach((subj) => {
-      const selectedG = state.overviewSelectedGrades[subj] || getGradesForSubject(sess, subj)[0];
-      if (selectedG) tasks.push({ subj, grade: selectedG });
-    });
-    showToast(`Đang tải ${tasks.length} ảnh phổ điểm 6K...`);
-    tasks.forEach((t, i) => {
-      setTimeout(() => {
-        exportHighResPhoDiemCard(sess, t.subj, 'ALL', t.grade);
-      }, i * 380);
-    });
+    const filePrefix = topN > 0 ? `Top_${topN}` : `Bang_Diem_${state.studentStatusFilter}`;
+    triggerCanvasDownload(canvas, `${filePrefix}_${slugify(subj)}_Khoi_${grade}`, format === 'svg' ? 'png' : format);
+    showToast(`Đã tải ảnh Bảng điểm & Xếp hạng môn ${subj} Khối ${grade} (${scale}K)`);
   }
 
   function exportTopStudentsCSV() {
     const sess = getCurrentSession();
     if (!sess) return;
-    const topN = Math.max(1, parseInt(state.topN, 10) || 20);
-    const lines = ['\uFEFFHẠNG,HỌC SINH,KHỐI,BỘ MÔN,GIÁO VIÊN,NGÀY THI,ĐIỂM THI,ĐỢT THI'];
+    const topN = Math.max(0, parseInt(state.topN, 10) || 0);
+    const lines = ['\uFEFFHẠNG,HỌC SINH,KHỐI,BỘ MÔN,GIÁO VIÊN,NGÀY THI,ĐIỂM / TT,ĐỢT THI'];
 
-    const { list } = getTopStudentsForSubject(
+    const { list } = getUnifiedStudentList(
       sess,
       state.currentSubject,
       topN,
@@ -3014,14 +2944,20 @@
       state.filterGrade
     );
     list.forEach((r) => {
-      lines.push(`${r.rank},"${r.name}","${r.grade}","${r.subject}","${r.teacher}","${r.examDate || sess.date || ''}",${r.score},"${sess.name}"`);
+      const isAbs = r.isAbsent || r.absent || r.score === null;
+      const rankStr = !isAbs && r.rank !== null ? r.rank : 'KĐ';
+      const scoreStr = isAbs ? 'x' : r.score;
+      lines.push(
+        `${rankStr},"${r.name}","${r.grade}","${r.subject}","${r.teacher}","${r.examDate || sess.date || ''}",${scoreStr},"${sess.name}"`
+      );
     });
 
+    const filePrefix = topN > 0 ? `Top_${topN}` : `Bang_Diem_${state.studentStatusFilter}`;
     downloadBlob(
       new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8' }),
-      `Top_${topN}_${slugify(state.currentSubject)}_Khoi_${state.filterGrade}.csv`
+      `${filePrefix}_${slugify(state.currentSubject)}_Khoi_${state.filterGrade}.csv`
     );
-    showToast(`Đã xuất file CSV Top ${topN}`);
+    showToast('Đã xuất file CSV Bảng điểm & Xếp hạng');
   }
 
   // ============================================================================
@@ -3207,8 +3143,8 @@
     document.getElementById('sectionPhoDiem').style.display = v === 'all' || v === 'phodiem' ? '' : 'none';
     document.getElementById('sectionMultiSession').style.display = v === 'all' || v === 'multisession' ? '' : 'none';
     document.getElementById('sectionGroupRanking').style.display = v === 'all' || v === 'grouprank' ? '' : 'none';
-    document.getElementById('sectionTopStudents').style.display = v === 'all' || v === 'topstudents' ? '' : 'none';
-    document.getElementById('sectionAbsentAndSearch').style.display = v === 'all' || v === 'absent' ? '' : 'none';
+    document.getElementById('sectionTopStudents').style.display =
+      v === 'all' || v === 'topstudents' || v === 'absent' ? '' : 'none';
     document.getElementById('sectionAllSubjectsOverview').style.display = v === 'all' || v === 'allsubjects' ? '' : 'none';
   }
 
@@ -3520,9 +3456,15 @@
 
     const topNInput = document.getElementById('topNInput');
     topNInput?.addEventListener('input', (e) => {
-      const v = parseInt(e.target.value, 10);
-      if (!isNaN(v) && v > 0) {
+      const raw = e.target.value.trim();
+      const v = raw === '' ? 0 : parseInt(raw, 10);
+      if (!isNaN(v) && v >= 0) {
         state.topN = v;
+        if (v > 0 && state.studentStatusFilter === 'ABSENT') {
+          state.studentStatusFilter = 'ALL';
+          const statusSel = document.getElementById('studentStatusFilter');
+          if (statusSel) statusSel.value = 'ALL';
+        }
         document.querySelectorAll('.quick-top-btn').forEach((b) => {
           b.classList.toggle('active', parseInt(b.getAttribute('data-top'), 10) === v);
         });
@@ -3534,9 +3476,14 @@
       btn.addEventListener('click', () => {
         document.querySelectorAll('.quick-top-btn').forEach((b) => b.classList.remove('active'));
         btn.classList.add('active');
-        const val = parseInt(btn.getAttribute('data-top'), 10) || 20;
+        const val = parseInt(btn.getAttribute('data-top'), 10) || 0;
         state.topN = val;
-        if (topNInput) topNInput.value = String(val);
+        if (topNInput) topNInput.value = val > 0 ? String(val) : '';
+        if (val > 0 && state.studentStatusFilter === 'ABSENT') {
+          state.studentStatusFilter = 'ALL';
+          const statusSel = document.getElementById('studentStatusFilter');
+          if (statusSel) statusSel.value = 'ALL';
+        }
         renderTopStudentsSection();
       });
     });
@@ -3553,14 +3500,19 @@
 
     document.getElementById('studentSearchInput')?.addEventListener('input', (e) => {
       state.studentSearchQuery = e.target.value;
-      renderAbsentAndSearchSection();
+      renderTopStudentsSection();
     });
     document.getElementById('studentStatusFilter')?.addEventListener('change', (e) => {
       state.studentStatusFilter = e.target.value;
-      renderAbsentAndSearchSection();
+      if (state.studentStatusFilter === 'ABSENT' && state.topN > 0) {
+        state.topN = 0;
+        if (topNInput) topNInput.value = '';
+        document.querySelectorAll('.quick-top-btn').forEach((b) => {
+          b.classList.toggle('active', parseInt(b.getAttribute('data-top'), 10) === 0);
+        });
+      }
+      renderTopStudentsSection();
     });
-    document.getElementById('btnExportAbsentCSV')?.addEventListener('click', exportAbsentCSV);
-    document.getElementById('btnExportAbsentImg')?.addEventListener('click', exportAbsentImage);
 
     document.getElementById('btnReplayAnimation')?.addEventListener('click', () => refreshAllUI(true));
     document.getElementById('btnExportCurrentPhoDiem')?.addEventListener('click', () => {
