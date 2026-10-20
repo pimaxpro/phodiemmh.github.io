@@ -76,11 +76,7 @@
           </button>
           <button class="view-mode-btn" data-view="topstudents">
             <i class="fa-solid fa-trophy"></i>
-            <span>Top điểm cao</span>
-          </button>
-          <button class="view-mode-btn" data-view="absent">
-            <i class="fa-solid fa-list-check"></i>
-            <span>Bảng điểm & Vắng</span>
+            <span>Bảng điểm & Xếp hạng</span>
           </button>
           <button class="view-mode-btn" data-view="allsubjects">
             <i class="fa-solid fa-grip"></i>
@@ -391,77 +387,56 @@
     </section>
 
     <!-- ====================================================================
-         SECTION 4: TOP HỌC SINH ĐIỂM CAO NHẤT
+         SECTION 4: BẢNG ĐIỂM, XẾP HẠNG TOP & THỐNG KÊ VẮNG THI (GỘP CHUNG)
          ==================================================================== -->
     <section id="sectionTopStudents" class="thpt-report-wrapper">
       <div class="report-action-bar">
         <div class="report-action-title">
           <i class="fa-solid fa-trophy" style="color: #ee642c;"></i>
-          <span>Top điểm cao</span>
-        </div>
-        <div class="export-controls">
-          <div class="top-n-badge-box">
-            <i class="fa-solid fa-crown" style="color:#ee642c; font-size:11px;"></i>
-            <label for="topNInput">Top</label>
-            <input type="number" id="topNInput" value="20" min="1" max="500" />
-          </div>
-
-          <div class="qf-segmented-group">
-            <button type="button" class="choice-pill quick-top-btn" data-top="5">5</button>
-            <button type="button" class="choice-pill quick-top-btn" data-top="10">10</button>
-            <button type="button" class="choice-pill quick-top-btn active" data-top="20">20</button>
-            <button type="button" class="choice-pill quick-top-btn" data-top="50">50</button>
-          </div>
-
-          <label class="choice-pill qf-curve-pill">
-            <input type="checkbox" id="includeTiesCheckbox" checked />
-            <span>Đồng hạng</span>
-          </label>
-
-          <label class="choice-pill qf-curve-pill">
-            <input type="checkbox" id="showAllSubjectsTopCheckbox" />
-            <span>Tất cả môn</span>
-          </label>
-
-          <button class="btn btn-outline btn-sm" id="btnExportTopCSV" title="Xuất file CSV">
-            <i class="fa-solid fa-file-csv"></i> CSV
-          </button>
-          <button class="btn btn-accent btn-sm" id="btnExportTopStudentsImg">
-            <i class="fa-solid fa-download"></i> Tải ảnh
-          </button>
-        </div>
-      </div>
-
-      <div class="thpt-capture-stage">
-        <div id="topStudentsContainer" style="display: flex; flex-direction: column; gap: 14px;"></div>
-      </div>
-    </section>
-
-    <!-- ====================================================================
-         SECTION 5: DANH SÁCH ĐIỂM HỌC SINH CỦA LẦN THI & THỐNG KÊ VẮNG THI (X)
-         ==================================================================== -->
-    <section id="sectionAbsentAndSearch" class="thpt-report-wrapper">
-      <div class="report-action-bar">
-        <div class="report-action-title">
-          <i class="fa-solid fa-list-check" style="color: #ee642c;"></i>
-          <span>Bảng điểm & Vắng thi</span>
+          <span>Bảng điểm & Xếp hạng</span>
         </div>
         <div class="export-controls">
           <div class="search-input-wrap">
             <i class="fa-solid fa-magnifying-glass"></i>
             <input type="text" id="studentSearchInput" placeholder="Tìm học sinh, giáo viên..." />
           </div>
-          <select id="studentStatusFilter" class="compact-select">
+
+          <select id="studentStatusFilter" class="compact-select" title="Lọc theo nhóm điểm hoặc vắng thi">
             <option value="ALL" selected>Tất cả học sinh</option>
             <option value="SCORED">Có điểm dự thi</option>
-            <option value="GT9">Điểm &gt;= 9.0 (Nổi bật)</option>
-            <option value="LT5">Điểm &lt; 5.0 (Dưới TB)</option>
+            <option value="GT9">Điểm &gt;= 9.0 (Trên 9)</option>
+            <option value="LT5">Điểm &lt; 5.0 (Dưới 5)</option>
             <option value="ABSENT">Vắng thi (dấu x)</option>
           </select>
-          <button class="btn btn-outline btn-sm" id="btnExportAbsentCSV" title="Xuất file CSV">
+
+          <div class="qf-segmented-group" title="Giới hạn Top điểm cao hoặc xem Tất cả">
+            <button type="button" class="choice-pill quick-top-btn active" data-top="0">Tất cả</button>
+            <button type="button" class="choice-pill quick-top-btn" data-top="5">Top 5</button>
+            <button type="button" class="choice-pill quick-top-btn" data-top="10">Top 10</button>
+            <button type="button" class="choice-pill quick-top-btn" data-top="20">Top 20</button>
+            <button type="button" class="choice-pill quick-top-btn" data-top="50">Top 50</button>
+          </div>
+
+          <div class="top-n-badge-box" title="Nhập số lượng Top tùy ý (0 hoặc trống = Tất cả)">
+            <i class="fa-solid fa-crown" style="color:#ee642c; font-size:11px;"></i>
+            <label for="topNInput">Top</label>
+            <input type="number" id="topNInput" value="" placeholder="All" min="0" max="1000" />
+          </div>
+
+          <label class="choice-pill qf-curve-pill" title="Lấy thêm học sinh đồng điểm ở hạng cuối Top">
+            <input type="checkbox" id="includeTiesCheckbox" checked />
+            <span>Đồng hạng</span>
+          </label>
+
+          <label class="choice-pill qf-curve-pill" title="Hiển thị bảng điểm của tất cả các môn">
+            <input type="checkbox" id="showAllSubjectsTopCheckbox" />
+            <span>Tất cả môn</span>
+          </label>
+
+          <button class="btn btn-outline btn-sm" id="btnExportTopCSV" title="Xuất danh sách đang hiển thị ra CSV">
             <i class="fa-solid fa-file-csv"></i> CSV
           </button>
-          <button class="btn btn-primary btn-sm" id="btnExportAbsentImg">
+          <button class="btn btn-accent btn-sm" id="btnExportTopStudentsImg" title="Tải ảnh 6K bảng đang hiển thị">
             <i class="fa-solid fa-download"></i> Tải ảnh
           </button>
         </div>
@@ -469,21 +444,7 @@
 
       <div class="thpt-capture-stage">
         <div id="absentSummaryStrip" style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px;"></div>
-        <div style="overflow-x: auto; background: #fff; border: 1px solid #cbd5e1; border-radius: 10px;">
-          <table class="thpt-rank-table" id="tableAbsentStudents">
-            <thead>
-              <tr>
-                <th style="width: 55px;">#</th>
-                <th style="text-align: left;">Học sinh</th>
-                <th style="width: 90px;">Khối</th>
-                <th style="width: 150px;">Bộ môn</th>
-                <th style="width: 150px;">Giáo viên</th>
-                <th style="width: 140px;">Điểm / TT</th>
-              </tr>
-            </thead>
-            <tbody></tbody>
-          </table>
-        </div>
+        <div id="topStudentsContainer" style="display: flex; flex-direction: column; gap: 14px;"></div>
       </div>
     </section>
 
