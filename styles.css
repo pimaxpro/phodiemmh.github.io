@@ -1000,15 +1000,67 @@ body.sidebar-collapsed .main-wrapper {
 
 .score-pill-badge {
   display: inline-block;
-  padding: 2px 9px;
+  padding: 2px 10px;
   border-radius: 99px;
   font-weight: 800;
   font-size: 13px;
 }
-.score-10 { background: #ffe4e6; color: #e11d48; }
+.score-10 { background: #fef3c7; color: #b45309; border: 1.5px solid #f59e0b; }
+.score-gt9 { background: #d1fae5; color: #047857; border: 1.5px solid #10b981; }
 .score-high { background: #dcfce7; color: #059669; }
 .score-mid { background: #dbeafe; color: #2563eb; }
+.score-lt5 { background: #fee2e2; color: #dc2626; border: 1.5px solid #ef4444; }
 .score-absent { background: #fef3c7; color: #b45309; border: 1px solid #fcd34d; }
+
+/* Highlighted Student Rows: Dưới 5 (< 5.0) & Trên 9 (>= 9.0) */
+.thpt-rank-table tbody tr.row-student-lt5 td:not(.stt-col) {
+  background-color: #fff1f2 !important;
+}
+.thpt-rank-table tbody tr.row-student-lt5 td.stt-col {
+  background-color: #ffe4e6 !important;
+  color: #dc2626 !important;
+  border-left: 4px solid #dc2626;
+}
+.student-name-lt5 {
+  color: #dc2626 !important;
+  font-weight: 800 !important;
+}
+
+.thpt-rank-table tbody tr.row-student-gt9 td:not(.stt-col) {
+  background-color: #ecfdf5 !important;
+}
+.thpt-rank-table tbody tr.row-student-gt9 td.stt-col {
+  background-color: #d1fae5 !important;
+  color: #047857 !important;
+  border-left: 4px solid #10b981;
+}
+.student-name-gt9 {
+  color: #047857 !important;
+  font-weight: 800 !important;
+}
+
+.student-tier-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 800;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+.student-tier-tag.tag-lt5 {
+  background: #dc2626;
+  color: #ffffff;
+}
+.student-tier-tag.tag-gt9 {
+  background: #059669;
+  color: #ffffff;
+}
+.student-tier-tag.tag-10 {
+  background: #d97706;
+  color: #ffffff;
+}
 
 .all-subjects-grid {
   display: grid;
