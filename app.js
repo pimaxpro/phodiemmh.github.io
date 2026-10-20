@@ -1,0 +1,3442 @@
+/**
+ * HỆ THỐNG PHỔ ĐIỂM THI — TRUNG TÂM MINH HOÀNG
+ * - Phổ điểm luôn tách riêng theo từng Môn & từng Khối (không gộp chung các khối khác nhau)
+ * - Toàn cảnh các môn có bộ chọn Khối riêng cho từng môn
+ * - Thiết kế biểu đồ Modern EdTech/FinTech (cột bo góc, màu chuyển sắc Gradient, nhãn ngang sắc nét)
+ */
+
+(function () {
+  'use strict';
+
+  const STORAGE_KEY = 'TRUNG_TAM_MINH_HOANG_SESSIONS_V3_REAL_L1';
+  const CENTER_NAME_KEY = 'TRUNG_TAM_MINH_HOANG_NAME_V2';
+
+  const state = {
+    sessions: [],
+    currentSessionId: null,
+    currentSubject: null,
+    filterGrade: null, // Always a specific grade (e.g., '10', '11', '12') — never 'ALL'
+    filterTeacher: 'ALL',
+    overviewSelectedGrades: {}, // { [subject]: grade } for "Toàn cảnh các môn"
+    binStep: 0.5,
+    showBellCurve: true,
+    topN: 20,
+    includeTies: true,
+    showAllSubjectsTop: false,
+    groupStatMode: 'teacher_by_grade',
+    compareGradeFilter: 'ALL',
+    viewMode: 'all',
+    centerName: 'TRUNG TÂM MINH HOÀNG',
+    studentSearchQuery: '',
+    studentStatusFilter: 'ALL',
+    pendingUploadRows: null,
+    chartAnimProgress: 1,
+    chartAnimFrameId: null,
+    chartBarRects: [],
+    selectedBinIndex: null,
+  };
+
+  function normalizeSubjectName(raw) {
+    if (!raw) return 'Chưa phân loại';
+    const cleaned = raw.trim().replace(/\s+/g, ' ');
+    const upper = cleaned.toUpperCase();
+    const map = {
+      'TOÁN THPT': 'Toán THPT',
+      'TOÁN THCS': 'Toán THCS',
+      'NGỮ VĂN': 'Ngữ Văn',
+      'TIẾNG ANH': 'Tiếng Anh',
+      'KHTN (LÍ)': 'KHTN (Lí)',
+      'KHTN (LÝ)': 'KHTN (Lí)',
+      'KHTN (HÓA)': 'KHTN (Hóa)',
+      'KHTN (HOÁ)': 'KHTN (Hóa)',
+      'KHTN (SINH)': 'KHTN (Sinh)',
+    };
+    return map[upper] || cleaned;
+  }
+
+  function parseCSVToRows(csvText) {
+    const text = csvText.replace(/^\uFEFF/, '');
+    const rows = [];
+    let curRow = [];
+    let curVal = '';
+    let inQuotes = false;
+
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      const next = text[i + 1];
+
+      if (inQuotes) {
+        if (ch === '"' && next === '"') {
+          curVal += '"';
+          i++;
+        } else if (ch === '"') {
+          inQuotes = false;
+        } else {
+          curVal += ch;
+        }
+      } else {
+        if (ch === '"') {
+          inQuotes = true;
+        } else if (ch === ',') {
+          curRow.push(curVal);
+          curVal = '';
+        } else if (ch === '\r' && next === '\n') {
+          curRow.push(curVal);
+          rows.push(curRow);
+          curRow = [];
+          curVal = '';
+          i++;
+        } else if (ch === '\n' || ch === '\r') {
+          curRow.push(curVal);
+          rows.push(curRow);
+          curRow = [];
+          curVal = '';
+        } else {
+          curVal += ch;
+        }
+      }
+    }
+    if (curVal.length > 0 || curRow.length > 0) {
+      curRow.push(curVal);
+      rows.push(curRow);
+    }
+    return rows;
+  }
+
+  function isAbsentMarker(str) {
+    if (!str) return false;
+    const s = String(str).trim().toLowerCase();
+    return s === 'x' || s === 'vắng' || s === 'vang' || s === 'v' || s === 'k' || s === 'kt' || s === 'nghỉ';
+  }
+
+  function normalizeGradeValue(raw) {
+    if (!raw) return '';
+    const s = String(raw).trim();
+    const num = parseFloat(s);
+    if (!isNaN(num) && isFinite(num) && num >= 1 && num <= 12) {
+      return String(Math.round(num));
+    }
+    return s;
+  }
+
+  function parseScoreFromCell(rawScoreStr) {
+    if (rawScoreStr === null || rawScoreStr === undefined || rawScoreStr === '') return null;
+    const normalizedNum = String(rawScoreStr).replace(',', '.').trim();
+    const parsed = parseFloat(normalizedNum);
+    if (isNaN(parsed) || !isFinite(parsed)) return null;
+    // Recover scores that Excel auto-converted into Date Serial Numbers (e.g. 6.5 -> 6 May -> 46148)
+    if (parsed > 35000 && parsed < 60000) {
+      const utcDays = Math.round(parsed - 25569);
+      const dt = new Date(utcDays * 86400 * 1000);
+      const recovered = parseFloat(`${dt.getUTCDate()}.${dt.getUTCMonth() + 1}`);
+      if (!isNaN(recovered) && recovered >= 0 && recovered <= 10) {
+        return Math.round(recovered * 1000) / 1000;
+      }
+      return null;
+    }
+    if (parsed >= 0 && parsed <= 10) {
+      return Math.round(parsed * 1000) / 1000;
+    }
+    return null;
+  }
+
+  function parseCenterRows(rows) {
+    let currentSubject = 'Chung';
+    let currentTeacher = 'Chưa rõ';
+    let lastKnownGrade = '9';
+    let colMap = { stt: 0, name: 1, grade: 2, date: -1, score: 3, note: -1 };
+    let seqStt = 0;
+
+    const rawRecords = [];
+    let validScoreCount = 0;
+    let explicitAbsentCount = 0;
+
+    for (let r = 0; r < rows.length; r++) {
+      const row = rows[r].map((c) => (c == null ? '' : String(c).trim()));
+      if (row.every((c) => c === '')) continue;
+
+      const firstCell = row[0] || '';
+      const firstUpper = firstCell.toUpperCase();
+
+      let foundMeta = false;
+      for (let c = 0; c < Math.min(3, row.length); c++) {
+        const cellText = row[c];
+        const cellUpper = cellText.toUpperCase();
+        if (cellUpper.startsWith('BỘ MÔN:') || cellUpper.startsWith('MÔN:')) {
+          const val = cellText.split(':')[1] || '';
+          currentSubject = normalizeSubjectName(val);
+          foundMeta = true;
+          break;
+        }
+        if (cellUpper.startsWith('GV:') || cellUpper.startsWith('GIÁO VIÊN:')) {
+          const val = cellText.split(':')[1] || '';
+          currentTeacher = val.trim() || 'Chưa rõ';
+          foundMeta = true;
+          break;
+        }
+      }
+      if (foundMeta) continue;
+      if (firstUpper.includes('DANH SÁCH HỌC SINH')) continue;
+
+      const upperHeaders = row.map((c) => c.toUpperCase());
+      const isHeaderRow =
+        firstUpper === 'STT' ||
+        (upperHeaders.some((h) => h.includes('HỌC SINH') || h.includes('HỌ TÊN')) &&
+          upperHeaders.some((h) => h === 'LỚP' || h.includes('KHỐI') || h.includes('ĐIỂM')));
+
+      if (isHeaderRow) {
+        const sttIdx = upperHeaders.findIndex((h) => h === 'STT');
+        const nameIdx = upperHeaders.findIndex((h) => h.includes('HỌC SINH') || h.includes('HỌ TÊN') || h.includes('TÊN'));
+        const gradeIdx = upperHeaders.findIndex((h) => h === 'LỚP' || h.includes('KHỐI'));
+        const dateIdx = upperHeaders.findIndex((h) => h.includes('NGÀY THI'));
+        const scoreIdx = upperHeaders.findIndex((h) => h.includes('ĐIỂM THI') || h === 'ĐIỂM');
+        const noteIdx = upperHeaders.findIndex((h) => h.includes('GHI CHÚ'));
+
+        colMap = {
+          stt: sttIdx,
+          name: nameIdx >= 0 ? nameIdx : sttIdx >= 0 ? 1 : 0,
+          grade: gradeIdx >= 0 ? gradeIdx : sttIdx >= 0 ? 2 : 1,
+          date: dateIdx,
+          score: scoreIdx >= 0 ? scoreIdx : sttIdx >= 0 ? 3 : 2,
+          note: noteIdx,
+        };
+        seqStt = 0;
+        continue;
+      }
+
+      seqStt++;
+      const sttRaw = colMap.stt >= 0 ? normalizeGradeValue(row[colMap.stt] || String(seqStt)) : String(seqStt);
+      const studentName = (row[colMap.name] || '').trim();
+      if (!studentName || studentName.toUpperCase() === 'HỌC SINH') continue;
+
+      let gradeRaw = normalizeGradeValue(row[colMap.grade] || '');
+      if (gradeRaw) {
+        lastKnownGrade = gradeRaw;
+      } else {
+        gradeRaw = lastKnownGrade;
+      }
+
+      const examDate = colMap.date >= 0 ? (row[colMap.date] || '').trim() : '';
+      const note = colMap.note >= 0 ? (row[colMap.note] || '').trim() : '';
+
+      const rawScoreStr = colMap.score >= 0 && colMap.score < row.length ? row[colMap.score] : '';
+      let score = null;
+      let absent = false;
+
+      if (isAbsentMarker(rawScoreStr) || isAbsentMarker(note)) {
+        absent = true;
+        explicitAbsentCount++;
+      } else if (rawScoreStr !== '') {
+        const parsedScore = parseScoreFromCell(rawScoreStr);
+        if (parsedScore !== null) {
+          score = parsedScore;
+          validScoreCount++;
+        }
+      }
+
+      rawRecords.push({
+        id: 'rec-' + r + '-' + Math.random().toString(36).slice(2, 7),
+        stt: sttRaw,
+        name: studentName,
+        grade: gradeRaw,
+        subject: currentSubject,
+        teacher: currentTeacher,
+        examDate: examDate,
+        score: score,
+        absent: absent,
+        note: note,
+      });
+    }
+
+    let records = rawRecords;
+    if (validScoreCount > 0) {
+      // Filter out un-graded template teacher blocks that have 0 scores and 0 explicit 'x' marks
+      const activeBlocks = new Set();
+      rawRecords.forEach((rec) => {
+        if (rec.score !== null || rec.absent) {
+          activeBlocks.add(`${rec.subject}|||${rec.teacher}`);
+        }
+      });
+      records = rawRecords.filter((rec) => activeBlocks.has(`${rec.subject}|||${rec.teacher}`));
+      records.forEach((rec) => {
+        if (rec.score === null) rec.absent = true;
+      });
+    }
+
+    return {
+      records,
+      totalRecords: records.length,
+      validScoreCount,
+      explicitAbsentCount,
+      subjects: Array.from(new Set(records.map((r) => r.subject))),
+    };
+  }
+
+  function fillMockScoresForRecords(records) {
+    const subjParams = {
+      'Toán THPT': [6.55, 1.6],
+      'Ngữ Văn': [6.85, 1.35],
+      'Tiếng Anh': [6.7, 1.8],
+      'Toán THCS': [7.0, 1.55],
+      'KHTN (Lí)': [6.6, 1.65],
+      'KHTN (Hóa)': [6.45, 1.7],
+      'KHTN (Sinh)': [7.1, 1.4],
+    };
+
+    let seed = Date.now() % 100000;
+    function nextRand() {
+      seed = (seed * 16807) % 2147483647;
+      return (seed - 1) / 2147483646;
+    }
+    function nextGauss(mean, std) {
+      const u1 = Math.max(1e-7, nextRand());
+      const u2 = nextRand();
+      const z0 = Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * u2);
+      return mean + z0 * std;
+    }
+
+    return records.map((rec) => {
+      if (rec.score !== null && !isNaN(rec.score)) return rec;
+      const [m, s] = subjParams[rec.subject] || [6.6, 1.6];
+      const r = nextRand();
+      if (r < 0.05) {
+        return Object.assign({}, rec, { score: null, absent: true });
+      }
+      let val;
+      if (r < 0.088) {
+        val = 10;
+      } else if (r < 0.095) {
+        val = [0, 0.5, 0.75, 1.0][Math.floor(nextRand() * 4)];
+      } else {
+        val = Math.max(0.5, Math.min(9.75, nextGauss(m, s)));
+        val = Math.round(val * 4) / 4;
+      }
+      return Object.assign({}, rec, { score: val, absent: false });
+    });
+  }
+
+  // ============================================================================
+  // STATISTICAL ENGINE
+  // ============================================================================
+  function computeStatistics(records, binStep = 0.5) {
+    const totalRoster = records.length;
+    const scoredRecords = records.filter(
+      (r) => !r.absent && r.score !== null && !isNaN(r.score) && r.score >= 0 && r.score <= 10
+    );
+    const absentRecords = records.filter((r) => r.absent || r.score === null || isNaN(r.score));
+    const n = scoredRecords.length;
+    const absentCount = absentRecords.length;
+    const absentPct = totalRoster > 0 ? (absentCount / totalRoster) * 100 : 0;
+
+    const scores = scoredRecords.map((r) => r.score).sort((a, b) => a - b);
+
+    const numBins = Math.round(10 / binStep);
+    const bins = [];
+    for (let i = 0; i < numBins; i++) {
+      const low = Math.round(i * binStep * 100) / 100;
+      const high = Math.round((i + 1) * binStep * 100) / 100;
+      const label = i === 0 ? `[${low}, ${high}]` : `(${low}, ${high}]`;
+      const shortLabel = `${low}–${high}`;
+      bins.push({ index: i, low, high, mid: (low + high) / 2, label, shortLabel, count: 0, pct: 0, students: [] });
+    }
+
+    for (let i = 0; i < n; i++) {
+      const rec = scoredRecords[i];
+      const s = rec.score;
+      let idx = s <= binStep + 1e-9 ? 0 : Math.ceil(s / binStep - 1e-9) - 1;
+      idx = Math.max(0, Math.min(numBins - 1, idx));
+      bins[idx].count++;
+      bins[idx].students.push(rec);
+    }
+
+    for (let i = 0; i < numBins; i++) {
+      bins[i].pct = n > 0 ? (bins[i].count / n) * 100 : 0;
+      bins[i].students.sort((a, b) => b.score - a.score || a.name.localeCompare(b.name, 'vi'));
+    }
+
+    if (n === 0) {
+      return {
+        totalRoster,
+        count: 0,
+        absentCount,
+        absentPct,
+        mean: 0,
+        median: 0,
+        maxScore: 0,
+        minScore: 0,
+        stdDev: 0,
+        mad: 0,
+        lt5Count: 0,
+        lt5Pct: 0,
+        gte7Count: 0,
+        gte7Pct: 0,
+        gte8Count: 0,
+        gte8Pct: 0,
+        mode: 0,
+        modeCount: 0,
+        score10Count: 0,
+        score0Count: 0,
+        lte1Count: 0,
+        lte1Pct: 0,
+        per1000Score10: 0,
+        bins,
+        maxBinCount: 0,
+      };
+    }
+
+    let sum = 0;
+    for (let i = 0; i < n; i++) sum += scores[i];
+    const mean = sum / n;
+    const minScore = scores[0];
+    const maxScore = scores[n - 1];
+
+    const midIdx = Math.floor(n / 2);
+    const median = n % 2 === 1 ? scores[midIdx] : (scores[midIdx - 1] + scores[midIdx]) / 2;
+
+    let sqDiffSum = 0;
+    for (let i = 0; i < n; i++) {
+      const d = scores[i] - mean;
+      sqDiffSum += d * d;
+    }
+    const stdDev = Math.sqrt(sqDiffSum / n);
+
+    const absDevs = scores.map((x) => Math.abs(x - median)).sort((a, b) => a - b);
+    const mad = n % 2 === 1 ? absDevs[midIdx] : (absDevs[midIdx - 1] + absDevs[midIdx]) / 2;
+
+    let lt5Count = 0;
+    let gte7Count = 0;
+    let gte8Count = 0;
+    let score10Count = 0;
+    let score0Count = 0;
+    let lte1Count = 0;
+
+    const freqMap = new Map();
+    for (let i = 0; i < n; i++) {
+      const s = scores[i];
+      if (s < 5 - 1e-9) lt5Count++;
+      if (s >= 7 - 1e-9) gte7Count++;
+      if (s >= 8 - 1e-9) gte8Count++;
+      if (Math.abs(s - 10) < 1e-9) score10Count++;
+      if (Math.abs(s) < 1e-9) score0Count++;
+      if (s <= 1 + 1e-9) lte1Count++;
+
+      const key = Math.round(s * 100) / 100;
+      freqMap.set(key, (freqMap.get(key) || 0) + 1);
+    }
+
+    let mode = scores[0];
+    let modeCount = 0;
+    freqMap.forEach((cnt, val) => {
+      if (cnt > modeCount || (cnt === modeCount && val > mode)) {
+        modeCount = cnt;
+        mode = val;
+      }
+    });
+
+    const maxBinCount = Math.max(...bins.map((b) => b.count), 1);
+
+    return {
+      totalRoster,
+      count: n,
+      absentCount,
+      absentPct,
+      mean,
+      median,
+      maxScore,
+      minScore,
+      stdDev,
+      mad,
+      lt5Count,
+      lt5Pct: (lt5Count / n) * 100,
+      gte7Count,
+      gte7Pct: (gte7Count / n) * 100,
+      gte8Count,
+      gte8Pct: (gte8Count / n) * 100,
+      mode,
+      modeCount,
+      score10Count,
+      score0Count,
+      lte1Count,
+      lte1Pct: (lte1Count / n) * 100,
+      per1000Score10: (score10Count / n) * 1000,
+      bins,
+      maxBinCount,
+    };
+  }
+
+  function fmtInt(n) {
+    return Number(n || 0).toLocaleString('en-US');
+  }
+  function fmtDec(n, digits = 2) {
+    return Number(n || 0).toFixed(digits).replace(/\.?0+$/, (m) => (digits === 2 ? m : ''));
+  }
+  function fmtFixed(n, digits = 2) {
+    return Number(n || 0).toFixed(digits);
+  }
+  function fmtPct(n, digits = 2) {
+    return Number(n || 0).toFixed(digits) + ' %';
+  }
+
+  // ============================================================================
+  // INITIALIZE & GRADE ENFORCEMENT (Never combine all grades!)
+  // ============================================================================
+  function getGradesForSubject(session, subject) {
+    if (!session) return [];
+    const subjRecords = session.records.filter((r) => r.subject === subject);
+    return Array.from(new Set(subjRecords.map((r) => String(r.grade)).filter((g) => g && g !== 'Chưa rõ'))).sort(
+      (a, b) => Number(a) - Number(b)
+    );
+  }
+
+  function ensureValidGradeAndTeacher() {
+    const sess = getCurrentSession();
+    if (!sess) return;
+    if (!state.currentSubject || !sess.subjects.includes(state.currentSubject)) {
+      state.currentSubject = sess.subjects[0] || 'Toán THPT';
+    }
+
+    const grades = getGradesForSubject(sess, state.currentSubject);
+    if (grades.length > 0) {
+      if (!state.filterGrade || state.filterGrade === 'ALL' || !grades.includes(String(state.filterGrade))) {
+        state.filterGrade = grades[0];
+      }
+    }
+
+    // Ensure teacher exists in this (subject, grade)
+    if (state.filterTeacher !== 'ALL') {
+      const teachersInGrade = sess.records
+        .filter((r) => r.subject === state.currentSubject && String(r.grade) === String(state.filterGrade))
+        .map((r) => r.teacher);
+      if (!teachersInGrade.includes(state.filterTeacher)) {
+        state.filterTeacher = 'ALL';
+      }
+    }
+  }
+
+  function sortSessionsByOrder(sessions) {
+    return sessions.slice().sort((a, b) => {
+      const mA = String(a.fileCode || a.name || '').match(/L(\d+)/i);
+      const mB = String(b.fileCode || b.name || '').match(/L(\d+)/i);
+      if (mA && mB) return parseInt(mA[1], 10) - parseInt(mB[1], 10);
+      if (mA) return -1;
+      if (mB) return 1;
+      return 0;
+    });
+  }
+
+  function parseWorkbookBufferToRows(arrayBuffer) {
+    const data = new Uint8Array(arrayBuffer);
+    const workbook = window.XLSX.read(data, { type: 'array' });
+    let allRows = [];
+    workbook.SheetNames.forEach((sheetName) => {
+      const sheet = workbook.Sheets[sheetName];
+      const sheetRows = window.XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+      allRows = allRows.concat(sheetRows);
+    });
+    return allRows;
+  }
+
+  function upsertAdminSessionFromParsed(num, fileName, parsed) {
+    if (!parsed || parsed.totalRecords === 0) return null;
+    const id = `admin-L${num}`;
+    const fileCode = `L${num}`;
+    const sessObj = {
+      id,
+      fileCode,
+      fileName,
+      isAdminFile: true,
+      name: `Lần thi ${num} (${fileName})`,
+      shortName: `Lần ${num} (${fileName})`,
+      date: new Date().toLocaleDateString('vi-VN'),
+      records: parsed.records,
+      subjects: parsed.subjects,
+    };
+    const existingIdx = state.sessions.findIndex((s) => s.id === id || s.fileCode === fileCode);
+    if (existingIdx >= 0) {
+      state.sessions[existingIdx] = sessObj;
+    } else {
+      state.sessions.push(sessObj);
+    }
+    state.sessions = sortSessionsByOrder(state.sessions);
+    return sessObj;
+  }
+
+  async function autoScanFolderExamFiles(showNotice = false) {
+    if (window.location.protocol === 'file:') return;
+    let foundAnyNew = false;
+    for (let k = 1; k <= 12; k++) {
+      const candidates = [`L${k}.xlsx`, `L${k}.csv`, `l${k}.xlsx`, `l${k}.csv`];
+      for (let c = 0; c < candidates.length; c++) {
+        const fname = candidates[c];
+        try {
+          const resp = await fetch(`./${fname}`, { cache: 'no-store' });
+          if (!resp.ok) continue;
+          let rows = [];
+          if (fname.toLowerCase().endsWith('.csv')) {
+            const text = await resp.text();
+            rows = parseCSVToRows(text);
+          } else {
+            const buf = await resp.arrayBuffer();
+            rows = parseWorkbookBufferToRows(buf);
+          }
+          const parsed = parseCenterRows(rows);
+          if (parsed.totalRecords > 0) {
+            const existed = state.sessions.some((s) => s.fileCode === `L${k}`);
+            upsertAdminSessionFromParsed(k, fname.toUpperCase().replace('.XLSX', '.xlsx').replace('.CSV', '.csv'), parsed);
+            if (!existed) foundAnyNew = true;
+            break;
+          }
+        } catch (err) {
+          // Ignore missing files L2, L3... when probing folder
+        }
+      }
+    }
+    if (foundAnyNew || showNotice) {
+      ensureValidGradeAndTeacher();
+      saveSessionsToStorage();
+      refreshAllUI(true);
+      if (showNotice) {
+        showToast(`Đã quét thư mục: phát hiện ${state.sessions.length} lần thi (${state.sessions.map((s) => s.fileCode || s.shortName).join(', ')})`);
+      }
+    }
+  }
+
+  function loadInitialData() {
+    const savedCenterName = localStorage.getItem(CENTER_NAME_KEY);
+    state.centerName = savedCenterName || 'TRUNG TÂM MINH HOÀNG';
+    const nameInput = document.getElementById('centerNameInput');
+    if (nameInput) nameInput.value = state.centerName;
+
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          state.sessions = sortSessionsByOrder(parsed);
+          state.currentSessionId = state.sessions[0].id;
+          state.currentSubject = state.sessions[0].subjects[0] || 'Toán THPT';
+          ensureValidGradeAndTeacher();
+          autoScanFolderExamFiles(false);
+          return;
+        }
+      }
+    } catch (e) {
+      console.warn(e);
+    }
+
+    resetToDemoSessions(false);
+    autoScanFolderExamFiles(false);
+  }
+
+  function resetToDemoSessions(showNotification = true) {
+    if (!window.CENTER_SAMPLE_DATA || !window.CENTER_SAMPLE_DATA.sessions) return;
+    state.sessions = window.CENTER_SAMPLE_DATA.sessions.map((s, idx) => {
+      const rows = parseCSVToRows(s.csv);
+      const parsed = parseCenterRows(rows);
+      return {
+        id: s.id || `admin-L${idx + 1}`,
+        fileCode: s.fileCode || `L${idx + 1}`,
+        fileName: s.fileName || `L${idx + 1}.xlsx`,
+        isAdminFile: true,
+        name: s.name,
+        shortName: s.shortName,
+        date: s.date,
+        records: parsed.records,
+        subjects: parsed.subjects,
+      };
+    });
+
+    state.sessions = sortSessionsByOrder(state.sessions);
+    state.currentSessionId = state.sessions[0].id;
+    state.currentSubject = state.sessions[0].subjects[0] || 'Toán THPT';
+    ensureValidGradeAndTeacher();
+    saveSessionsToStorage();
+    if (showNotification) {
+      autoScanFolderExamFiles(true);
+      showToast('Đã nạp lại dữ liệu gốc L1.xlsx của Trung tâm Minh Hoàng');
+      refreshAllUI(true);
+    }
+  }
+
+  function saveSessionsToStorage() {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state.sessions));
+    } catch (e) {
+      console.warn(e);
+    }
+  }
+
+  function getCurrentSession() {
+    return state.sessions.find((s) => s.id === state.currentSessionId) || state.sessions[0];
+  }
+
+  function getFilteredRecords(session, subject, teacher = 'ALL', grade = null) {
+    if (!session) return [];
+    return session.records.filter((r) => {
+      if (subject && subject !== 'ALL' && r.subject !== subject) return false;
+      if (grade && grade !== 'ALL' && String(r.grade) !== String(grade)) return false;
+      if (teacher && teacher !== 'ALL' && r.teacher !== teacher) return false;
+      return true;
+    });
+  }
+
+  // ============================================================================
+  // UI RENDERING
+  // ============================================================================
+  function renderSessionPills() {
+    // 1. Render Top Dropdown Menu (#topSessionDropdown) — concise, no leading icons, normal font
+    const selectEl = document.getElementById('topSessionDropdown');
+    if (selectEl) {
+      let html = '';
+      state.sessions.forEach((sess) => {
+        const sel = state.viewMode !== 'multisession' && sess.id === state.currentSessionId ? 'selected' : '';
+        const label = sess.shortName || sess.name;
+        html += `<option value="${escapeHtml(sess.id)}" ${sel}>${escapeHtml(label)}</option>`;
+      });
+
+      const compareSel = state.viewMode === 'multisession' ? 'selected' : '';
+      html += `<option value="__COMPARE_ALL__" ${compareSel}>So sánh các lần thi</option>`;
+
+      selectEl.innerHTML = html;
+    }
+
+    // Show/hide delete button if more than 1 session
+    const delBtn = document.getElementById('btnDeleteCurrentSession');
+    if (delBtn) {
+      delBtn.style.display = state.sessions.length > 1 ? 'inline-flex' : 'none';
+    }
+
+    // 2. Render Status Pills inside Top Bar Footer (#sessionPillsContainer)
+    const container = document.getElementById('sessionPillsContainer');
+    if (!container) return;
+    container.innerHTML = '';
+
+    state.sessions.forEach((sess) => {
+      const isActive = sess.id === state.currentSessionId;
+      const scoredCount = sess.records.filter((r) => !r.absent && r.score !== null).length;
+      const absentCount = sess.records.filter((r) => r.absent || r.score === null).length;
+      const pill = document.createElement('div');
+      pill.className = 'session-pill' + (isActive ? ' active' : '');
+      pill.innerHTML = `
+        <span>${escapeHtml(sess.shortName || sess.name)}</span>
+        <span class="pill-count">${fmtInt(scoredCount)} TS${absentCount > 0 ? ` • ${absentCount} vắng` : ''}</span>
+        ${
+          state.sessions.length > 1
+            ? `<span class="pill-delete" data-del-id="${escapeHtml(sess.id)}" title="Xóa">✕</span>`
+            : ''
+        }
+      `;
+      pill.addEventListener('click', (e) => {
+        const dBtn = e.target.closest('[data-del-id]');
+        if (dBtn) {
+          e.stopPropagation();
+          deleteSession(dBtn.getAttribute('data-del-id'));
+          return;
+        }
+        if (state.currentSessionId !== sess.id || state.viewMode === 'multisession') {
+          state.currentSessionId = sess.id;
+          if (state.viewMode === 'multisession') {
+            state.viewMode = 'all';
+            updateViewModeVisibility();
+          }
+          ensureValidGradeAndTeacher();
+          refreshAllUI(true);
+        }
+      });
+      container.appendChild(pill);
+    });
+  }
+
+  function deleteSession(id) {
+    if (state.sessions.length <= 1) return;
+    state.sessions = state.sessions.filter((s) => s.id !== id);
+    if (state.currentSessionId === id) {
+      state.currentSessionId = state.sessions[state.sessions.length - 1].id;
+    }
+    ensureValidGradeAndTeacher();
+    saveSessionsToStorage();
+    refreshAllUI(true);
+  }
+
+  function renderSubjectTabs() {
+    const sess = getCurrentSession();
+    const container = document.getElementById('subjectTabsContainer');
+    if (!container || !sess) return;
+    container.innerHTML = '';
+
+    sess.subjects.forEach((subj) => {
+      const grades = getGradesForSubject(sess, subj);
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'subject-tab' + (state.currentSubject === subj ? ' active' : '');
+      btn.innerHTML = `
+        <span>${escapeHtml(subj)}</span>
+        <span class="subj-badge">K${grades.join(', ')}</span>
+      `;
+      btn.addEventListener('click', () => {
+        if (state.currentSubject !== subj) {
+          state.currentSubject = subj;
+          state.filterTeacher = 'ALL';
+          state.compareGradeFilter = 'ALL';
+          ensureValidGradeAndTeacher();
+          refreshAllUI(true);
+        }
+      });
+      container.appendChild(btn);
+    });
+  }
+
+  function renderTeacherAndGradeFilters() {
+    const sess = getCurrentSession();
+    if (!sess) return;
+    ensureValidGradeAndTeacher();
+
+    const subjRecords = sess.records.filter((r) => r.subject === state.currentSubject);
+    const grades = getGradesForSubject(sess, state.currentSubject);
+
+    // 1. Render Quick Grade Pills (ONLY individual grades — NO "Tất cả Khối")
+    const gradePillsWrap = document.getElementById('quickGradePills');
+    if (gradePillsWrap) {
+      let gHtml = `<span class="filter-group-label">Chọn Khối thi (${escapeHtml(state.currentSubject)}):</span>`;
+      grades.forEach((g) => {
+        const cnt = subjRecords.filter(
+          (r) => String(r.grade) === String(g) && !r.absent && r.score !== null
+        ).length;
+        const active = String(state.filterGrade) === String(g) ? 'active' : '';
+        gHtml += `<button type="button" class="choice-pill ${active}" data-g-pill="${escapeHtml(String(g))}">Khối ${escapeHtml(String(g))} <span class="cp-count">(${cnt} TS)</span></button>`;
+      });
+      gradePillsWrap.innerHTML = gHtml;
+
+      gradePillsWrap.querySelectorAll('[data-g-pill]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          state.filterGrade = btn.getAttribute('data-g-pill');
+          state.filterTeacher = 'ALL';
+          refreshAllUI(true);
+        });
+      });
+    }
+
+    // 2. Render Quick Teacher Pills (Only teachers who teach the selected Grade of this Subject)
+    const gradeRecords = subjRecords.filter((r) => String(r.grade) === String(state.filterGrade));
+    const teachersInGrade = Array.from(new Set(gradeRecords.map((r) => r.teacher).filter(Boolean)));
+
+    const teacherPillsWrap = document.getElementById('quickTeacherPills');
+    if (teacherPillsWrap) {
+      const totalGradeTested = gradeRecords.filter((r) => !r.absent && r.score !== null).length;
+      let tHtml = `<span class="filter-group-label">Giáo viên dạy Khối ${escapeHtml(String(state.filterGrade))}:</span>`;
+      tHtml += `<button type="button" class="choice-pill ${state.filterTeacher === 'ALL' ? 'active' : ''}" data-t-pill="ALL">Cả nhóm Khối ${escapeHtml(String(state.filterGrade))} (${teachersInGrade.length} GV • ${totalGradeTested} TS)</button>`;
+      teachersInGrade.forEach((t) => {
+        const cnt = gradeRecords.filter((r) => r.teacher === t && !r.absent && r.score !== null).length;
+        const active = state.filterTeacher === t ? 'active' : '';
+        tHtml += `<button type="button" class="choice-pill ${active}" data-t-pill="${escapeHtml(t)}">GV ${escapeHtml(t)} <span class="cp-count">(${cnt} TS)</span></button>`;
+      });
+      teacherPillsWrap.innerHTML = tHtml;
+
+      teacherPillsWrap.querySelectorAll('[data-t-pill]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          state.filterTeacher = btn.getAttribute('data-t-pill');
+          refreshAllUI(true);
+        });
+      });
+    }
+
+    // 3. Compare Grade Filter in Section 3
+    const compareGradeSelect = document.getElementById('compareGradeFilter');
+    if (compareGradeSelect) {
+      compareGradeSelect.innerHTML = `<option value="ALL">Tất cả các Khối (${grades.length} khối)</option>`;
+      grades.forEach((g) => {
+        const opt = document.createElement('option');
+        opt.value = g;
+        opt.textContent = `Chỉ xem Khối ${g}`;
+        if (String(state.compareGradeFilter) === String(g)) opt.selected = true;
+        compareGradeSelect.appendChild(opt);
+      });
+    }
+  }
+
+  function updateTHPTMainSection(stats) {
+    const sess = getCurrentSession();
+    if (!sess) return;
+
+    const teacherLabel = state.filterTeacher !== 'ALL' ? ` • GV ${state.filterTeacher}` : ' • Cả nhóm';
+
+    document.getElementById('thptSubBannerText').textContent =
+      `PHỔ ĐIỂM MÔN ${state.currentSubject.toUpperCase()} — KHỐI ${state.filterGrade}${teacherLabel.toUpperCase()} (${sess.shortName.toUpperCase()})`;
+
+    document.getElementById('thptCenterTag').textContent =
+      `${state.centerName} • Khối ${state.filterGrade}${teacherLabel}`;
+
+    document.getElementById('statSoTS').textContent = fmtInt(stats.count);
+    document.getElementById('statSoTSNote').textContent = `/${fmtInt(stats.totalRoster)} ĐK`;
+    document.getElementById('statAbsentCount').textContent = fmtInt(stats.absentCount);
+    document.getElementById('statAbsentPct').textContent = fmtPct(stats.absentPct, 2);
+    document.getElementById('statDTB').textContent = fmtFixed(stats.mean, 2);
+    document.getElementById('statMedian').textContent = fmtDec(stats.median, 2);
+    document.getElementById('statDLC').textContent = fmtFixed(stats.stdDev, 2);
+    document.getElementById('statMAD').textContent = fmtDec(stats.mad, 2);
+    document.getElementById('statLt5Count').textContent = fmtInt(stats.lt5Count);
+    document.getElementById('statLt5Pct').textContent = fmtPct(stats.lt5Pct, 2);
+    document.getElementById('statGte7Count').textContent = fmtInt(stats.gte7Count);
+    document.getElementById('statGte7Pct').textContent = fmtPct(stats.gte7Pct, 2);
+    document.getElementById('statMode').textContent = fmtFixed(stats.mode, 2);
+    document.getElementById('statModeCount').textContent = stats.modeCount > 0 ? `(${stats.modeCount} TS)` : '';
+    document.getElementById('statScore10').textContent = fmtInt(stats.score10Count);
+    document.getElementById('statScore10Pct').textContent =
+      stats.count > 0 ? fmtPct((stats.score10Count / stats.count) * 100, 2) : '';
+    document.getElementById('statScore0').textContent = fmtInt(stats.score0Count);
+    document.getElementById('statLte1Count').textContent = fmtInt(stats.lte1Count);
+    document.getElementById('statLte1Pct').textContent = fmtPct(stats.lte1Pct, 2);
+  }
+
+  // ============================================================================
+  // MODERN EDTECH / FINTECH CANVAS CHART ENGINE
+  // ============================================================================
+  function drawRoundedTopRect(ctx, x, y, w, h, r) {
+    if (h <= 0) return;
+    const radius = Math.min(r, w / 2, h);
+    ctx.beginPath();
+    ctx.moveTo(x, y + h);
+    ctx.lineTo(x, y + radius);
+    ctx.quadraticCurveTo(x, y, x + radius, y);
+    ctx.lineTo(x + w - radius, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + radius);
+    ctx.lineTo(x + w, y + h);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  function drawRoundedBadge(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    ctx.lineTo(x + r, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  function triggerChartAnimation(stats) {
+    if (state.chartAnimFrameId) cancelAnimationFrame(state.chartAnimFrameId);
+    const startTime = performance.now();
+    const duration = 680;
+
+    function animateFrame(now) {
+      const t = Math.min(1, (now - startTime) / duration);
+      state.chartAnimProgress = 1 - Math.pow(1 - t, 3);
+      drawTHPTChartOnCanvas(document.getElementById('phoDiemCanvas'), stats, state.chartAnimProgress, -1);
+      if (t < 1) {
+        state.chartAnimFrameId = requestAnimationFrame(animateFrame);
+      }
+    }
+    state.chartAnimFrameId = requestAnimationFrame(animateFrame);
+  }
+
+  function drawTHPTChartOnCanvas(canvas, stats, animProgress = 1, hoverIndex = -1, customDims = null) {
+    if (!canvas || !stats) return;
+    const dpr = customDims ? customDims.scale : window.devicePixelRatio || 1;
+    const width = customDims ? customDims.width : canvas.parentElement.clientWidth || 760;
+    const height = customDims ? customDims.height : canvas.parentElement.clientHeight || 410;
+
+    if (canvas.width !== Math.round(width * dpr) || canvas.height !== Math.round(height * dpr)) {
+      canvas.width = Math.round(width * dpr);
+      canvas.height = Math.round(height * dpr);
+    }
+
+    const ctx = canvas.getContext('2d');
+    ctx.save();
+    ctx.scale(dpr, dpr);
+
+    // Clean white canvas
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, width, height);
+
+    const padTop = 52;
+    const padBottom = 60;
+    const padLeft = 48;
+    const padRight = 20;
+    const plotW = width - padLeft - padRight;
+    const plotH = height - padTop - padBottom;
+
+    // Header & Legend inside chart
+    const sess = getCurrentSession();
+    const gradeText = customDims?.gradeOverride || state.filterGrade;
+    const subjText = customDims?.subjectOverride || state.currentSubject;
+    const teacherText =
+      (customDims ? customDims.teacherOverride : state.filterTeacher) !== 'ALL'
+        ? ` • GV ${customDims ? customDims.teacherOverride : state.filterTeacher}`
+        : '';
+
+    ctx.fillStyle = '#0f172a';
+    ctx.font = '800 14.5px Inter, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(
+      `Phân bố điểm Môn ${subjText} — Khối ${gradeText}${teacherText} (${sess ? sess.shortName : ''})`,
+      padLeft,
+      18
+    );
+
+    // Color legend pills at top right
+    const legendItems = [
+      { label: 'Dưới TB (<5)', color: '#f59e0b' },
+      { label: 'Đạt / Khá (5–8)', color: '#2563eb' },
+      { label: 'Giỏi (8–10)', color: '#10b981' },
+    ];
+    let lx = width - padRight;
+    for (let i = legendItems.length - 1; i >= 0; i--) {
+      const item = legendItems[i];
+      ctx.font = '600 11px Inter, sans-serif';
+      const tw = ctx.measureText(item.label).width;
+      lx -= tw;
+      ctx.fillStyle = '#475569';
+      ctx.textAlign = 'left';
+      ctx.fillText(item.label, lx, 18);
+      lx -= 14;
+      ctx.fillStyle = item.color;
+      drawRoundedBadge(ctx, lx, 13, 10, 10, 3);
+      lx -= 14;
+    }
+
+    const rawMax = Math.max(stats.maxBinCount, 1);
+    const niceMax = computeNiceYMax(rawMax * 1.22);
+    const numYTicks = 5;
+    const yStep = niceMax / numYTicks;
+
+    // Subtle dashed horizontal gridlines
+    ctx.font = '600 11px Inter, sans-serif';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+
+    for (let i = 0; i <= numYTicks; i++) {
+      const val = Math.round(i * yStep);
+      const y = padTop + plotH - (val / niceMax) * plotH;
+
+      ctx.strokeStyle = i === 0 ? '#cbd5e1' : '#f1f5f9';
+      ctx.lineWidth = i === 0 ? 1.5 : 1;
+      if (i > 0) ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(padLeft, y);
+      ctx.lineTo(padLeft + plotW, y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      ctx.fillStyle = '#64748b';
+      ctx.fillText(String(val), padLeft - 10, y);
+    }
+
+    const bins = stats.bins;
+    const numBins = bins.length;
+    const slotW = plotW / numBins;
+    const barW = Math.max(6, Math.min(34, slotW * 0.68));
+
+    if (!customDims) state.chartBarRects = [];
+
+    // Draw Solid Rounded Bars (No gradients)
+    for (let i = 0; i < numBins; i++) {
+      const bin = bins[i];
+      const barDelay = (i / numBins) * 0.22;
+      const localProgress = Math.max(0, Math.min(1, (animProgress - barDelay) / (1 - barDelay)));
+
+      const fullBarH = (bin.count / niceMax) * plotH;
+      const barH = fullBarH * localProgress;
+      const x = padLeft + i * slotW + (slotW - barW) / 2;
+      const y = padTop + plotH - barH;
+      const centerX = padLeft + i * slotW + slotW / 2;
+
+      // Hover or selected column highlight background
+      const isSelected = !customDims && state.selectedBinIndex === i;
+      if (i === hoverIndex || isSelected) {
+        ctx.fillStyle = isSelected ? 'rgba(219, 234, 254, 0.72)' : 'rgba(219, 234, 254, 0.45)';
+        drawRoundedBadge(ctx, padLeft + i * slotW + 2, padTop, slotW - 4, plotH, 6);
+      }
+
+      // Solid color by score range
+      if (i === hoverIndex || isSelected) {
+        ctx.fillStyle = '#1e40af';
+      } else if (bin.high <= 5.001) {
+        ctx.fillStyle = '#f59e0b';
+      } else if (bin.low >= 7.999) {
+        ctx.fillStyle = '#10b981';
+      } else {
+        ctx.fillStyle = '#2563eb';
+      }
+
+      if (barH > 0.5) {
+        drawRoundedTopRect(ctx, x, y, barW, barH, 6);
+        if (isSelected) {
+          ctx.strokeStyle = '#0f172a';
+          ctx.lineWidth = 2;
+          ctx.strokeRect(x, y, barW, barH);
+        }
+      } else {
+        ctx.fillStyle = '#e2e8f0';
+        ctx.fillRect(x, padTop + plotH - 2, barW, 2);
+      }
+
+      if (!customDims) {
+        state.chartBarRects.push({
+          index: i,
+          x: padLeft + i * slotW,
+          y: padTop,
+          w: slotW,
+          h: plotH,
+          barX: centerX,
+          barTopY: padTop + plotH - fullBarH,
+          bin,
+        });
+      }
+
+      // Horizontal Count Badge above bar
+      if (localProgress > 0.5 && bin.count > 0) {
+        ctx.fillStyle = i === hoverIndex ? '#1e3a8a' : '#0f172a';
+        ctx.font = numBins > 25 ? '700 9.5px Inter, sans-serif' : '700 11px Inter, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+        ctx.fillText(String(bin.count), centerX, y - 5);
+      }
+
+      // Clean Angled X-axis label
+      ctx.save();
+      ctx.translate(centerX, padTop + plotH + 10);
+      ctx.rotate(-Math.PI / 4.2);
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = i === hoverIndex ? '#1d4ed8' : '#475569';
+      ctx.font = numBins > 25 ? '600 9px Inter, sans-serif' : '600 10.5px Inter, sans-serif';
+      ctx.fillText(bin.shortLabel, 0, 0);
+      ctx.restore();
+    }
+
+    // Data-Faithful Smoothed Trend Curve (KDE over actual bins) & Floating ĐTB Badge
+    if (state.showBellCurve && stats.count > 1 && animProgress > 0.3) {
+      const curveAlpha = Math.min(1, (animProgress - 0.3) / 0.7);
+      ctx.save();
+      ctx.globalAlpha = curveAlpha;
+
+      const trendPts = computeTrendCurvePoints(bins, padLeft, plotW, padTop, plotH, niceMax, state.binStep);
+
+      ctx.strokeStyle = '#e11d48';
+      ctx.lineWidth = 2.4;
+      ctx.lineJoin = 'round';
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      trendPts.forEach((pt, idx) => {
+        if (idx === 0) ctx.moveTo(pt.x, pt.y);
+        else ctx.lineTo(pt.x, pt.y);
+      });
+      ctx.stroke();
+
+      // Mean Reference Line + Pill Tag
+      const meanX = padLeft + (stats.mean / 10) * plotW;
+      ctx.strokeStyle = '#e11d48';
+      ctx.lineWidth = 1.6;
+      ctx.setLineDash([5, 4]);
+      ctx.beginPath();
+      ctx.moveTo(meanX, padTop + 18);
+      ctx.lineTo(meanX, padTop + plotH);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      const badgeText = `ĐTB: ${fmtFixed(stats.mean, 2)}`;
+      ctx.font = '700 11px Inter, sans-serif';
+      const bw = ctx.measureText(badgeText).width + 14;
+      const bx = Math.max(padLeft, Math.min(padLeft + plotW - bw, meanX - bw / 2));
+      ctx.fillStyle = '#ffe4e6';
+      drawRoundedBadge(ctx, bx, padTop - 2, bw, 20, 6);
+      ctx.fillStyle = '#e11d48';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(badgeText, bx + bw / 2, padTop + 8);
+
+      ctx.restore();
+    }
+
+    ctx.restore();
+  }
+
+  function computeTrendCurvePoints(bins, padLeft, plotW, padTop, plotH, niceMax, binStep) {
+    const B = bins.length;
+    if (B === 0) return [];
+    const counts = bins.map((b) => b.count);
+    const maxCount = Math.max(...counts, 0);
+    if (maxCount === 0) return [];
+
+    const sigma = Math.max(0.72, 0.41 / (binStep || 0.5));
+    const twoSigmaSq = 2 * sigma * sigma;
+
+    function evalRawKernel(u) {
+      let num = 0;
+      let den = 0;
+      for (let j = -2; j <= B + 1; j++) {
+        const yj = j >= 0 && j < B ? counts[j] : 0;
+        const d = u - j;
+        const w = Math.exp(-(d * d) / twoSigmaSq);
+        num += yj * w;
+        den += w;
+      }
+      return den > 0 ? num / den : 0;
+    }
+
+    let maxSmoothed = 0;
+    for (let i = 0; i < B; i++) {
+      const v = evalRawKernel(i);
+      if (v > maxSmoothed) maxSmoothed = v;
+    }
+    const peakScale = maxSmoothed > 0 ? Math.min(1.24, (maxCount * 0.90) / maxSmoothed) : 1;
+
+    const steps = 160;
+    const pts = [];
+    for (let s = 0; s <= steps; s++) {
+      const frac = s / steps;
+      const cx = padLeft + frac * plotW;
+      const u = frac * B - 0.5;
+      const val = Math.max(0, evalRawKernel(u) * peakScale);
+      const cy = Math.max(padTop + 6, padTop + plotH - (val / niceMax) * plotH);
+      pts.push({ x: cx, y: cy });
+    }
+    return pts;
+  }
+
+  function computeNiceYMax(target) {
+    if (target <= 5) return 5;
+    if (target <= 10) return 10;
+    const magnitude = Math.pow(10, Math.floor(Math.log10(target)));
+    const residual = target / magnitude;
+    let niceRes;
+    if (residual <= 1.2) niceRes = 1.2;
+    else if (residual <= 1.5) niceRes = 1.5;
+    else if (residual <= 2) niceRes = 2;
+    else if (residual <= 2.5) niceRes = 2.5;
+    else if (residual <= 3) niceRes = 3;
+    else if (residual <= 4) niceRes = 4;
+    else if (residual <= 5) niceRes = 5;
+    else if (residual <= 6) niceRes = 6;
+    else if (residual <= 8) niceRes = 8;
+    else niceRes = 10;
+    return Math.ceil(niceRes * magnitude);
+  }
+
+  function setupMainChartInteractivity() {
+    const canvas = document.getElementById('phoDiemCanvas');
+    const tooltip = document.getElementById('chartTooltip');
+    if (!canvas || !tooltip) return;
+
+    canvas.addEventListener('mousemove', (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+
+      let found = null;
+      for (let i = 0; i < state.chartBarRects.length; i++) {
+        const b = state.chartBarRects[i];
+        if (mx >= b.x && mx <= b.x + b.w && my >= b.y && my <= b.y + b.h) {
+          found = b;
+          break;
+        }
+      }
+
+      const sess = getCurrentSession();
+      const records = getFilteredRecords(sess, state.currentSubject, state.filterTeacher, state.filterGrade);
+      const stats = computeStatistics(records, state.binStep);
+
+      if (found) {
+        canvas.style.cursor = 'pointer';
+        drawTHPTChartOnCanvas(canvas, stats, 1, found.index);
+        tooltip.classList.add('visible');
+        tooltip.style.left = `${found.barX}px`;
+        tooltip.style.top = `${Math.max(42, found.barTopY)}px`;
+        tooltip.innerHTML = `<div style="font-weight:800; color:#93c5fd;">Khoảng điểm ${found.bin.label}</div><div>Số lượng: <b>${fmtInt(found.bin.count)} TS</b> (${fmtFixed(found.bin.pct, 1)}%)</div><div style="font-size:11px; color:#fde047; margin-top:3px;">👆 Bấm vào cột để xem danh sách HS</div>`;
+      } else {
+        canvas.style.cursor = 'default';
+        drawTHPTChartOnCanvas(canvas, stats, 1, -1);
+        tooltip.classList.remove('visible');
+      }
+    });
+
+    canvas.addEventListener('mouseleave', () => {
+      canvas.style.cursor = 'default';
+      tooltip.classList.remove('visible');
+      const sess = getCurrentSession();
+      const records = getFilteredRecords(sess, state.currentSubject, state.filterTeacher, state.filterGrade);
+      const stats = computeStatistics(records, state.binStep);
+      drawTHPTChartOnCanvas(canvas, stats, 1, -1);
+    });
+
+    canvas.addEventListener('click', (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+
+      let found = null;
+      for (let i = 0; i < state.chartBarRects.length; i++) {
+        const b = state.chartBarRects[i];
+        if (mx >= b.x && mx <= b.x + b.w && my >= b.y && my <= b.y + b.h) {
+          found = b;
+          break;
+        }
+      }
+
+      if (!found) return;
+
+      state.selectedBinIndex = found.index;
+      const sess = getCurrentSession();
+      const records = getFilteredRecords(sess, state.currentSubject, state.filterTeacher, state.filterGrade);
+      const stats = computeStatistics(records, state.binStep);
+
+      drawTHPTChartOnCanvas(canvas, stats, 1, found.index);
+      renderSelectedBinInlinePanel(stats);
+      openBinStudentsModal(stats, found.index, state.currentSubject, state.filterGrade, state.filterTeacher, sess);
+    });
+  }
+
+  function buildStudentRowsHtml(students, sessionDate) {
+    if (!students || students.length === 0) {
+      return `<tr><td colspan="6" style="text-align:center; padding:18px; color:#64748b; font-weight:600;">Không có học sinh nào có điểm trong cột này</td></tr>`;
+    }
+    return students
+      .map((item, idx) => {
+        let scoreClass = 'score-mid';
+        if (Math.abs(item.score - 10) < 1e-9) scoreClass = 'score-10';
+        else if (item.score >= 8) scoreClass = 'score-high';
+
+        return `
+          <tr>
+            <td class="stt-col">${idx + 1}</td>
+            <td style="font-weight:700;">${escapeHtml(item.name)}</td>
+            <td class="num-col">Khối ${escapeHtml(String(item.grade))}</td>
+            <td class="num-col">GV ${escapeHtml(item.teacher)}</td>
+            <td class="num-col">${escapeHtml(item.examDate || sessionDate || '-')}</td>
+            <td class="num-col"><span class="score-pill-badge ${scoreClass}">${fmtFixed(item.score, 2)}</span></td>
+          </tr>
+        `;
+      })
+      .join('');
+  }
+
+  function buildTeacherSummaryBadgesHtml(students) {
+    if (!students || students.length === 0) return '';
+    const map = new Map();
+    students.forEach((s) => {
+      const t = s.teacher || 'Chưa rõ';
+      map.set(t, (map.get(t) || 0) + 1);
+    });
+    const parts = [];
+    map.forEach((cnt, t) => {
+      parts.push(
+        `<span style="background:#eff6ff; color:#1e40af; border:1px solid #bfdbfe; padding:4px 10px; border-radius:7px; font-size:12px; font-weight:700;">GV ${escapeHtml(t)}: <b>${cnt} HS</b></span>`
+      );
+    });
+    return parts.join('');
+  }
+
+  function renderSelectedBinInlinePanel(stats) {
+    const panel = document.getElementById('selectedBinStudentsPanel');
+    if (!panel) return;
+
+    if (
+      state.selectedBinIndex === null ||
+      !stats ||
+      !stats.bins ||
+      state.selectedBinIndex < 0 ||
+      state.selectedBinIndex >= stats.bins.length
+    ) {
+      panel.style.display = 'none';
+      panel.innerHTML = '';
+      return;
+    }
+
+    const bin = stats.bins[state.selectedBinIndex];
+    const sess = getCurrentSession();
+    const teacherLabel = state.filterTeacher !== 'ALL' ? ` • GV ${state.filterTeacher}` : ' • Cả nhóm';
+
+    panel.style.display = 'block';
+    panel.innerHTML = `
+      <div class="thpt-rank-box" style="border-color:#93c5fd; background:#f8fafc;">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:10px;">
+          <div>
+            <h3 style="margin-bottom:2px; font-size:15px;">
+              DANH SÁCH HỌC SINH TRONG CỘT ĐIỂM <span class="highlight-red">${escapeHtml(bin.shortLabel)}</span> (${escapeHtml(bin.label)})
+            </h3>
+            <div style="font-size:12.5px; color:#475569; font-weight:600;">
+              Môn ${escapeHtml(state.currentSubject)} — Khối ${escapeHtml(String(state.filterGrade))}${escapeHtml(teacherLabel)} • Số lượng: <b style="color:#e11d48;">${fmtInt(bin.count)} học sinh</b> (${fmtFixed(bin.pct, 1)}%)
+            </div>
+          </div>
+          <button type="button" class="btn btn-outline btn-sm" id="btnClearSelectedBin">✕ Ẩn danh sách</button>
+        </div>
+
+        <div style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px;">
+          ${buildTeacherSummaryBadgesHtml(bin.students)}
+        </div>
+
+        <div style="overflow-x:auto; max-height:360px; overflow-y:auto; border-radius:10px; border:1px solid #cbd5e1; background:#ffffff;">
+          <table class="thpt-rank-table">
+            <thead style="position:sticky; top:0; z-index:2;">
+              <tr>
+                <th style="width:56px;">STT</th>
+                <th style="text-align:left;">Họ và tên học sinh</th>
+                <th style="width:90px;">Khối</th>
+                <th style="width:170px;">Giáo viên</th>
+                <th style="width:120px;">Ngày thi</th>
+                <th style="width:110px;">Điểm thi</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${buildStudentRowsHtml(bin.students, sess?.date)}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+
+    panel.querySelector('#btnClearSelectedBin')?.addEventListener('click', () => {
+      state.selectedBinIndex = null;
+      panel.style.display = 'none';
+      const canvas = document.getElementById('phoDiemCanvas');
+      drawTHPTChartOnCanvas(canvas, stats, 1, -1);
+    });
+  }
+
+  function openBinStudentsModal(stats, binIndex, subject, grade, teacherFilter, session) {
+    const modal = document.getElementById('binStudentsModal');
+    if (!modal || !stats || !stats.bins || !stats.bins[binIndex]) return;
+
+    const bin = stats.bins[binIndex];
+    const teacherLabel = teacherFilter && teacherFilter !== 'ALL' ? ` • GV ${teacherFilter}` : ' • Cả nhóm';
+
+    document.getElementById('binModalTitle').innerHTML =
+      `DANH SÁCH HỌC SINH CỘT ĐIỂM <span style="color:#e11d48;">${escapeHtml(bin.shortLabel)}</span> <span style="font-size:13.5px; color:#475569;">(${escapeHtml(bin.label)})</span>`;
+
+    document.getElementById('binModalSubtitle').innerHTML =
+      `Môn <b>${escapeHtml(subject)}</b> — Khối <b>${escapeHtml(String(grade))}</b>${escapeHtml(teacherLabel)} (${escapeHtml(session?.shortName || '')}) • Có <b style="color:#e11d48;">${fmtInt(bin.count)} học sinh</b> (${fmtFixed(bin.pct, 1)}%)`;
+
+    // Render quick switcher pills for all columns
+    const switcher = document.getElementById('binModalQuickSwitcher');
+    if (switcher) {
+      switcher.innerHTML =
+        `<span style="font-size:11.5px; font-weight:800; color:#1e40af; display:inline-flex; align-items:center; margin-right:4px;">Chọn cột điểm khác:</span>` +
+        stats.bins
+          .map((b, idx) => {
+            const act = idx === binIndex ? 'active' : '';
+            const dimStyle = b.count === 0 && idx !== binIndex ? 'opacity:0.45;' : '';
+            return `<button type="button" class="bin-switch-pill ${act}" style="${dimStyle}" data-modal-bin="${idx}">${escapeHtml(b.shortLabel)} (${b.count})</button>`;
+          })
+          .join('');
+
+      switcher.querySelectorAll('[data-modal-bin]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const newIdx = parseInt(btn.getAttribute('data-modal-bin'), 10);
+          if (subject === state.currentSubject && String(grade) === String(state.filterGrade)) {
+            state.selectedBinIndex = newIdx;
+            drawTHPTChartOnCanvas(document.getElementById('phoDiemCanvas'), stats, 1, newIdx);
+            renderSelectedBinInlinePanel(stats);
+          }
+          openBinStudentsModal(stats, newIdx, subject, grade, teacherFilter, session);
+        });
+      });
+    }
+
+    document.getElementById('binModalTeacherSummary').innerHTML = buildTeacherSummaryBadgesHtml(bin.students);
+    document.getElementById('binModalTableBody').innerHTML = buildStudentRowsHtml(bin.students, session?.date);
+
+    modal.classList.add('open');
+  }
+
+  // ============================================================================
+  // SECTION 2: MULTI-SESSION COMPARISON (Scoped to Current Subject & Grade)
+  // ============================================================================
+  function renderMultiSessionComparison() {
+    const subj = state.currentSubject;
+    const grade = state.filterGrade;
+    const teacherSuffix = state.filterTeacher !== 'ALL' ? ` (GV ${state.filterTeacher})` : '';
+    document.getElementById('comparisonBannerTitle').textContent =
+      `SO SÁNH MÔN ${subj.toUpperCase()} — KHỐI ${grade}${teacherSuffix.toUpperCase()} QUA CÁC LẦN THI`;
+
+    const sessionStatsList = state.sessions.map((sess) => {
+      const recs = getFilteredRecords(sess, subj, state.filterTeacher, grade);
+      return {
+        session: sess,
+        stats: computeStatistics(recs, 0.5),
+      };
+    });
+
+    const table = document.getElementById('multiSessionComparisonTable');
+    if (!table) return;
+
+    let theadHtml = `<thead><tr><th>CHỈ SỐ (KHỐI ${escapeHtml(String(grade))}) / LẦN THI</th>`;
+    sessionStatsList.forEach((item) => {
+      theadHtml += `<th colspan="2">${escapeHtml(item.session.shortName || item.session.name)}</th>`;
+    });
+    theadHtml += `</tr></thead>`;
+
+    const rowsConfig = [
+      {
+        label: 'Số thí sinh dự thi',
+        render: (st) => `<td class="val-col">${fmtInt(st.count)}</td><td class="val-col">/${fmtInt(st.totalRoster)} ĐK</td>`,
+      },
+      {
+        label: 'Số thí sinh vắng thi (x)',
+        render: (st) =>
+          `<td class="val-col text-thpt-purple">${fmtInt(st.absentCount)}</td><td class="val-col text-thpt-purple">${fmtPct(st.absentPct, 2)}</td>`,
+      },
+      {
+        label: 'Điểm trung bình',
+        render: (st) => `<td class="val-col text-thpt-red">${fmtFixed(st.mean, 2)}</td><td class="val-col"></td>`,
+      },
+      {
+        label: 'Trung vị',
+        render: (st) => `<td class="val-col">${fmtDec(st.median, 2)}</td><td class="val-col"></td>`,
+      },
+      {
+        label: 'Độ lệch chuẩn',
+        render: (st) => `<td class="val-col text-thpt-red">${fmtFixed(st.stdDev, 2)}</td><td class="val-col"></td>`,
+      },
+      {
+        label: 'Độ lệch tuyệt đối trung vị (MAD)',
+        render: (st) => `<td class="val-col">${fmtDec(st.mad, 2)}</td><td class="val-col"></td>`,
+      },
+      {
+        label: 'Điểm dưới trung bình (<5)',
+        render: (st) =>
+          `<td class="val-col text-thpt-purple">${fmtInt(st.lt5Count)}</td><td class="val-col text-thpt-purple">${fmtPct(st.lt5Pct, 2)}</td>`,
+      },
+      {
+        label: 'Điểm lớn hơn hoặc bằng 7 (>=7)',
+        render: (st) =>
+          `<td class="val-col text-thpt-purple">${fmtInt(st.gte7Count)}</td><td class="val-col text-thpt-purple">${fmtPct(st.gte7Pct, 2)}</td>`,
+      },
+      {
+        label: 'Điểm nhiều thí sinh đạt nhất (Mode)',
+        render: (st) => `<td class="val-col">${fmtDec(st.mode, 2)}</td><td class="val-col"></td>`,
+      },
+      {
+        label: 'Số thí sinh đạt điểm 10',
+        render: (st) => `<td class="val-col text-thpt-red">${fmtInt(st.score10Count)}</td><td class="val-col"></td>`,
+      },
+      {
+        label: 'Số thí sinh đạt điểm 0',
+        render: (st) => `<td class="val-col">${fmtInt(st.score0Count)}</td><td class="val-col"></td>`,
+      },
+      {
+        label: 'Số thí sinh đạt điểm <=1',
+        render: (st) => `<td class="val-col">${fmtInt(st.lte1Count)}</td><td class="val-col">${fmtPct(st.lte1Pct, 2)}</td>`,
+      },
+    ];
+
+    let tbodyHtml = '<tbody>';
+    rowsConfig.forEach((rc) => {
+      tbodyHtml += `<tr><td class="metric-col">${escapeHtml(rc.label)}</td>`;
+      sessionStatsList.forEach((item) => {
+        tbodyHtml += rc.render(item.stats);
+      });
+      tbodyHtml += `</tr>`;
+    });
+    tbodyHtml += '</tbody>';
+    table.innerHTML = theadHtml + tbodyHtml;
+
+    drawMultiSessionOverlayChart(document.getElementById('multiSessionCanvas'), sessionStatsList);
+  }
+
+  function drawMultiSessionOverlayChart(canvas, sessionStatsList, customDims = null) {
+    if (!canvas || !sessionStatsList || sessionStatsList.length === 0) return;
+    const dpr = customDims ? customDims.scale : window.devicePixelRatio || 1;
+    const width = customDims ? customDims.width : canvas.parentElement.clientWidth || 900;
+    const height = customDims ? customDims.height : canvas.parentElement.clientHeight || 290;
+
+    canvas.width = Math.round(width * dpr);
+    canvas.height = Math.round(height * dpr);
+
+    const ctx = canvas.getContext('2d');
+    ctx.save();
+    ctx.scale(dpr, dpr);
+
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, width, height);
+
+    const padTop = 42;
+    const padBottom = 52;
+    const padLeft = 48;
+    const padRight = 18;
+    const plotW = width - padLeft - padRight;
+    const plotH = height - padTop - padBottom;
+
+    const palette = ['#94a3b8', '#38bdf8', '#2563eb', '#10b981', '#f59e0b', '#e11d48'];
+
+    let maxPct = 10;
+    sessionStatsList.forEach((s) => {
+      s.stats.bins.forEach((b) => {
+        if (b.pct > maxPct) maxPct = b.pct;
+      });
+    });
+    const niceMaxPct = Math.ceil((maxPct * 1.2) / 5) * 5;
+
+    const yTicks = 5;
+    ctx.font = '600 10.5px Inter, sans-serif';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    for (let i = 0; i <= yTicks; i++) {
+      const val = (niceMaxPct / yTicks) * i;
+      const y = padTop + plotH - (val / niceMaxPct) * plotH;
+      ctx.strokeStyle = i === 0 ? '#cbd5e1' : '#f1f5f9';
+      if (i > 0) ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(padLeft, y);
+      ctx.lineTo(padLeft + plotW, y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = '#64748b';
+      ctx.fillText(fmtFixed(val, 0) + '%', padLeft - 8, y);
+    }
+
+    let legendX = padLeft;
+    sessionStatsList.forEach((item, idx) => {
+      const color = palette[idx % palette.length];
+      ctx.fillStyle = color;
+      drawRoundedBadge(ctx, legendX, 12, 12, 12, 3);
+      ctx.fillStyle = '#0f172a';
+      ctx.font = '700 11.5px Inter, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      const label = `${item.session.shortName} (ĐTB: ${fmtFixed(item.stats.mean, 2)})`;
+      ctx.fillText(label, legendX + 17, 18);
+      legendX += ctx.measureText(label).width + 34;
+    });
+
+    const binsRef = sessionStatsList[0].stats.bins;
+    const numBins = binsRef.length;
+    const slotW = plotW / numBins;
+    const groupW = slotW * 0.76;
+    const singleBarW = Math.max(4, groupW / sessionStatsList.length);
+
+    for (let bIdx = 0; bIdx < numBins; bIdx++) {
+      const groupStartX = padLeft + bIdx * slotW + (slotW - groupW) / 2;
+      sessionStatsList.forEach((item, sIdx) => {
+        const bin = item.stats.bins[bIdx];
+        const barH = (bin.pct / niceMaxPct) * plotH * state.chartAnimProgress;
+        const x = groupStartX + sIdx * singleBarW;
+        const y = padTop + plotH - barH;
+        ctx.fillStyle = palette[sIdx % palette.length];
+        drawRoundedTopRect(ctx, x, y, singleBarW - 1.5, barH, 3);
+      });
+
+      const centerX = padLeft + bIdx * slotW + slotW / 2;
+      ctx.save();
+      ctx.translate(centerX, padTop + plotH + 9);
+      ctx.rotate(-Math.PI / 4.2);
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#475569';
+      ctx.font = '600 10px Inter, sans-serif';
+      ctx.fillText(binsRef[bIdx].shortLabel, 0, 0);
+      ctx.restore();
+    }
+
+    ctx.restore();
+  }
+
+  // ============================================================================
+  // SECTION 3: THỐNG KÊ THEO KHỐI LỚP & GIÁO VIÊN
+  // ============================================================================
+  function renderGroupRankingSection() {
+    const sess = getCurrentSession();
+    if (!sess) return;
+    const subjRecords = sess.records.filter((r) => r.subject === state.currentSubject);
+
+    const subView1 = document.getElementById('subViewTeacherByGrade');
+    const subView2 = document.getElementById('subViewGradeSummary');
+    const compareSelect = document.getElementById('compareGradeFilter');
+
+    if (state.groupStatMode === 'teacher_by_grade') {
+      subView1.style.display = '';
+      subView2.style.display = 'none';
+      if (compareSelect) compareSelect.style.display = '';
+      renderTeacherByGradeSubView(subjRecords);
+    } else {
+      subView1.style.display = 'none';
+      subView2.style.display = '';
+      if (compareSelect) compareSelect.style.display = 'none';
+      renderGradeSummarySubView(subjRecords);
+    }
+  }
+
+  function renderTeacherByGradeSubView(subjRecords) {
+    const wrap = document.getElementById('teacherByGradeTablesWrap');
+    if (!wrap) return;
+
+    const allGrades = Array.from(
+      new Set(subjRecords.map((r) => String(r.grade)).filter((g) => g && g !== 'Chưa rõ'))
+    ).sort((a, b) => Number(a) - Number(b));
+
+    const gradesToShow =
+      state.compareGradeFilter === 'ALL'
+        ? allGrades
+        : allGrades.filter((g) => String(g) === String(state.compareGradeFilter));
+
+    const chartItems = [];
+    let html = '';
+
+    gradesToShow.forEach((grade) => {
+      const gradeRecs = subjRecords.filter((r) => String(r.grade) === String(grade));
+      const gradeTotalStats = computeStatistics(gradeRecs, 0.5);
+      const groupMean = gradeTotalStats.mean;
+
+      const teachersInGrade = Array.from(new Set(gradeRecs.map((r) => r.teacher).filter(Boolean)));
+
+      const teacherRows = teachersInGrade
+        .map((teacher) => {
+          const recs = gradeRecs.filter((r) => r.teacher === teacher);
+          const st = computeStatistics(recs, 0.5);
+          const diff = st.mean - groupMean;
+          return {
+            grade,
+            teacher,
+            stats: st,
+            groupMean,
+            diff,
+          };
+        })
+        .sort((a, b) => b.stats.mean - a.stats.mean || b.stats.maxScore - a.stats.maxScore);
+
+      teacherRows.forEach((tr) => {
+        chartItems.push({
+          label: `K${tr.grade} - ${tr.teacher}`,
+          grade: tr.grade,
+          teacher: tr.teacher,
+          mean: tr.stats.mean,
+          groupMean: tr.groupMean,
+          diff: tr.diff,
+        });
+      });
+
+      html += `
+        <div class="thpt-rank-box">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap;">
+            <h3 style="margin-bottom: 0;">
+              KHỐI <span class="highlight-red">${escapeHtml(String(grade))}</span> — SO SÁNH ĐTB CỦA GIÁO VIÊN VỚI ĐTB CHUNG CẢ NHÓM
+            </h3>
+            <span style="font-size: 12.5px; font-weight: 700; color: #1e40af; background: #eff6ff; padding: 4px 10px; border-radius: 8px;">
+              Tổng Khối ${escapeHtml(String(grade))}: ${fmtInt(gradeTotalStats.count)} dự thi • ${fmtInt(gradeTotalStats.absentCount)} vắng (x) • ĐTB Chung Cả Nhóm: <b style="color:#e11d48;">${fmtFixed(groupMean, 2)}</b> • Cao nhất Khối: <b style="color:#059669;">${fmtFixed(gradeTotalStats.maxScore, 2)}</b>
+            </span>
+          </div>
+          <div style="overflow-x: auto; border-radius: 10px; border: 1px solid #cbd5e1;">
+            <table class="thpt-rank-table">
+              <thead>
+                <tr>
+                  <th style="width: 48px;">Hạng</th>
+                  <th style="text-align: left;">Giáo viên</th>
+                  <th>Dự thi</th>
+                  <th>Vắng (x)</th>
+                  <th>ĐTB Khối của GV</th>
+                  <th>ĐTB Chung Cả Nhóm</th>
+                  <th>So với Cả Nhóm</th>
+                  <th>Điểm cao nhất</th>
+                  <th>Số điểm &gt;=8</th>
+                  <th>Số điểm 10</th>
+                  <th>Dưới TB (&lt;5)</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${teacherRows
+                  .map((tr, idx) => {
+                    const diffSign = tr.diff >= 0 ? '+' : '';
+                    const diffClass = tr.diff >= 0 ? 'diff-pos' : 'diff-neg';
+                    return `
+                  <tr>
+                    <td class="stt-col">${idx + 1}</td>
+                    <td style="font-weight: 700;">GV ${escapeHtml(tr.teacher)}</td>
+                    <td class="num-col">${fmtInt(tr.stats.count)}</td>
+                    <td class="num-col text-thpt-purple">${fmtInt(tr.stats.absentCount)}</td>
+                    <td class="num-col text-thpt-red" style="font-size: 14px;">${fmtFixed(tr.stats.mean, 2)}</td>
+                    <td class="num-col" style="font-weight: 700; color: #d97706;">${fmtFixed(tr.groupMean, 2)}</td>
+                    <td class="num-col ${diffClass}">${diffSign}${fmtFixed(tr.diff, 2)}</td>
+                    <td class="num-col" style="font-weight: 800; color: #059669;">${fmtFixed(tr.stats.maxScore, 2)}</td>
+                    <td class="num-col" style="font-weight: 700; color: #2563eb;">${fmtInt(tr.stats.gte8Count)} (${fmtFixed(tr.stats.gte8Pct, 1)}%)</td>
+                    <td class="num-col text-thpt-red">${fmtInt(tr.stats.score10Count)}</td>
+                    <td class="num-col">${fmtInt(tr.stats.lt5Count)} (${fmtFixed(tr.stats.lt5Pct, 1)}%)</td>
+                  </tr>
+                `;
+                  })
+                  .join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `;
+    });
+
+    wrap.innerHTML = html;
+    drawTeacherGradeCompareChart(document.getElementById('teacherGradeCompareCanvas'), chartItems);
+  }
+
+  function drawTeacherGradeCompareChart(canvas, items, customDims = null) {
+    if (!canvas || !items || items.length === 0) return;
+    const dpr = customDims ? customDims.scale : window.devicePixelRatio || 1;
+    const width = customDims ? customDims.width : canvas.parentElement.clientWidth || 860;
+    const height = customDims ? customDims.height : canvas.parentElement.clientHeight || 295;
+
+    canvas.width = Math.round(width * dpr);
+    canvas.height = Math.round(height * dpr);
+
+    const ctx = canvas.getContext('2d');
+    ctx.save();
+    ctx.scale(dpr, dpr);
+
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, width, height);
+
+    const padTop = 46;
+    const padBottom = 60;
+    const padLeft = 48;
+    const padRight = 18;
+    const plotW = width - padLeft - padRight;
+    const plotH = height - padTop - padBottom;
+
+    // Modern Legend
+    ctx.fillStyle = '#2563eb';
+    drawRoundedBadge(ctx, padLeft, 12, 13, 13, 4);
+    ctx.fillStyle = '#0f172a';
+    ctx.font = '700 12px Inter, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('ĐTB Khối của Giáo viên', padLeft + 18, 18.5);
+
+    ctx.fillStyle = '#f59e0b';
+    drawRoundedBadge(ctx, padLeft + 195, 12, 13, 13, 4);
+    ctx.fillStyle = '#0f172a';
+    ctx.fillText('ĐTB Chung cả Nhóm (cùng Khối)', padLeft + 213, 18.5);
+
+    for (let i = 0; i <= 5; i++) {
+      const val = i * 2;
+      const y = padTop + plotH - (val / 10) * plotH;
+      ctx.strokeStyle = i === 0 ? '#cbd5e1' : '#f1f5f9';
+      if (i > 0) ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(padLeft, y);
+      ctx.lineTo(padLeft + plotW, y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = '#64748b';
+      ctx.font = '600 11px Inter, sans-serif';
+      ctx.textAlign = 'right';
+      ctx.fillText(String(val), padLeft - 8, y);
+    }
+
+    const n = items.length;
+    const slotW = plotW / n;
+    const groupW = Math.min(60, slotW * 0.72);
+    const barW = groupW / 2;
+
+    items.forEach((it, idx) => {
+      const gx = padLeft + idx * slotW + (slotW - groupW) / 2;
+
+      // Bar 1: Teacher's Grade Mean (Solid Blue)
+      const hMean = (it.mean / 10) * plotH * state.chartAnimProgress;
+      const yMean = padTop + plotH - hMean;
+      ctx.fillStyle = '#2563eb';
+      drawRoundedTopRect(ctx, gx, yMean, barW - 2, hMean, 5);
+
+      ctx.fillStyle = '#1e3a8a';
+      ctx.font = '700 10.5px Inter, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(fmtFixed(it.mean, 2), gx + barW / 2 - 1, yMean - 6);
+
+      // Bar 2: Whole Group's Grade Mean (Solid Amber)
+      const hGroup = (it.groupMean / 10) * plotH * state.chartAnimProgress;
+      const yGroup = padTop + plotH - hGroup;
+      ctx.fillStyle = '#f59e0b';
+      drawRoundedTopRect(ctx, gx + barW, yGroup, barW - 2, hGroup, 5);
+
+      ctx.fillStyle = '#b45309';
+      ctx.font = '700 10.5px Inter, sans-serif';
+      ctx.fillText(fmtFixed(it.groupMean, 2), gx + barW + barW / 2 - 1, yGroup - 6);
+
+      // Delta badge above the pair
+      const topY = Math.min(yMean, yGroup) - 21;
+      const diffSign = it.diff >= 0 ? '+' : '';
+      ctx.fillStyle = it.diff >= 0 ? '#059669' : '#e11d48';
+      ctx.font = '800 10px Inter, sans-serif';
+      ctx.fillText(`(${diffSign}${fmtFixed(it.diff, 2)})`, gx + groupW / 2, Math.max(padTop - 8, topY));
+
+      // X label
+      const cx = padLeft + idx * slotW + slotW / 2;
+      ctx.save();
+      ctx.translate(cx, padTop + plotH + 10);
+      ctx.rotate(-Math.PI / 5.5);
+      ctx.textAlign = 'right';
+      ctx.fillStyle = '#334155';
+      ctx.font = '600 10.5px Inter, sans-serif';
+      ctx.fillText(it.label, 0, 0);
+      ctx.restore();
+    });
+
+    ctx.restore();
+  }
+
+  function renderGradeSummarySubView(subjRecords) {
+    const allGrades = Array.from(
+      new Set(subjRecords.map((r) => String(r.grade)).filter((g) => g && g !== 'Chưa rõ'))
+    ).sort((a, b) => Number(a) - Number(b));
+
+    const gradeStats = allGrades.map((grade) => {
+      const recs = subjRecords.filter((r) => String(r.grade) === String(grade));
+      const st = computeStatistics(recs, 0.5);
+      const scored = recs.filter((r) => !r.absent && r.score !== null).sort((a, b) => b.score - a.score);
+      const topScorers =
+        scored.length > 0
+          ? scored
+              .filter((r) => Math.abs(r.score - st.maxScore) < 1e-9)
+              .slice(0, 2)
+              .map((r) => `${r.name} (GV ${r.teacher})`)
+              .join(', ')
+          : '-';
+      return { grade, st, topScorers };
+    });
+
+    const tbodyLeft = document.querySelector('#tableGradeAvgAndMax tbody');
+    const tbodyRight = document.querySelector('#tableGradeQuality tbody');
+
+    if (tbodyLeft) {
+      tbodyLeft.innerHTML = gradeStats
+        .map(
+          (g) => `
+        <tr>
+          <td class="stt-col" style="width: 72px;">Khối ${escapeHtml(String(g.grade))}</td>
+          <td class="num-col">${fmtInt(g.st.count)}</td>
+          <td class="num-col text-thpt-purple">${fmtInt(g.st.absentCount)}</td>
+          <td class="num-col text-thpt-red">${fmtFixed(g.st.mean, 2)}</td>
+          <td class="num-col" style="font-weight: 800; color: #059669;">${fmtFixed(g.st.maxScore, 2)}</td>
+          <td style="font-size: 12.5px; font-weight: 600;">${escapeHtml(g.topScorers)}</td>
+        </tr>
+      `
+        )
+        .join('');
+    }
+
+    if (tbodyRight) {
+      tbodyRight.innerHTML = gradeStats
+        .map(
+          (g) => `
+        <tr>
+          <td class="stt-col" style="width: 72px;">Khối ${escapeHtml(String(g.grade))}</td>
+          <td class="num-col text-thpt-red">${fmtInt(g.st.score10Count)}</td>
+          <td class="num-col" style="font-weight:700; color:#2563eb;">${fmtInt(g.st.gte8Count)} (${fmtFixed(g.st.gte8Pct, 1)}%)</td>
+          <td class="num-col">${fmtInt(g.st.gte7Count)} (${fmtFixed(g.st.gte7Pct, 1)}%)</td>
+          <td class="num-col text-thpt-purple">${fmtInt(g.st.lt5Count)} (${fmtFixed(g.st.lt5Pct, 1)}%)</td>
+        </tr>
+      `
+        )
+        .join('');
+    }
+  }
+
+  // ============================================================================
+  // SECTION 4: TOP N HIGHEST SCORING STUDENTS (Scoped to Subject & Grade)
+  // ============================================================================
+  function getTopStudentsForSubject(sess, subject, topN, includeTies, teacherFilter = 'ALL', gradeFilter = null) {
+    const recs = getFilteredRecords(sess, subject, teacherFilter, gradeFilter).filter(
+      (r) => !r.absent && r.score !== null && !isNaN(r.score)
+    );
+    recs.sort((a, b) => b.score - a.score || a.name.localeCompare(b.name, 'vi'));
+
+    const result = [];
+    let currentRank = 1;
+    for (let i = 0; i < recs.length; i++) {
+      if (i > 0 && Math.abs(recs[i].score - recs[i - 1].score) > 1e-9) {
+        currentRank = i + 1;
+      }
+      if (i < topN) {
+        result.push(Object.assign({}, recs[i], { rank: currentRank }));
+      } else if (includeTies && result.length > 0 && Math.abs(recs[i].score - result[result.length - 1].score) < 1e-9) {
+        result.push(Object.assign({}, recs[i], { rank: currentRank }));
+      } else {
+        break;
+      }
+    }
+    return { list: result, totalTested: recs.length };
+  }
+
+  function renderTopStudentsSection() {
+    const sess = getCurrentSession();
+    const container = document.getElementById('topStudentsContainer');
+    if (!sess || !container) return;
+
+    const topN = Math.max(1, parseInt(state.topN, 10) || 20);
+    const pairs = [];
+
+    if (state.showAllSubjectsTop) {
+      sess.subjects.forEach((subj) => {
+        const grades = getGradesForSubject(sess, subj);
+        grades.forEach((g) => pairs.push({ subj, grade: g, teacher: 'ALL' }));
+      });
+    } else {
+      pairs.push({ subj: state.currentSubject, grade: state.filterGrade, teacher: state.filterTeacher });
+    }
+
+    let html = '';
+    pairs.forEach(({ subj, grade, teacher }) => {
+      const { list, totalTested } = getTopStudentsForSubject(sess, subj, topN, state.includeTies, teacher, grade);
+      const tLabel = teacher !== 'ALL' ? ` • GV ${teacher}` : '';
+
+      html += `
+        <div class="thpt-rank-box">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <h3 style="margin-bottom:0;">
+              TOP <span class="highlight-red">${topN}</span> MÔN <span class="highlight-red">${escapeHtml(subj.toUpperCase())} — KHỐI ${escapeHtml(String(grade))}</span>${escapeHtml(tLabel)}
+            </h3>
+            <span style="font-size:12px; font-weight:600; color:#475569;">
+              ${list.length} / ${totalTested} TS dự thi
+            </span>
+          </div>
+          <div style="overflow-x:auto; border-radius:10px; border:1px solid #cbd5e1;">
+            <table class="thpt-rank-table">
+              <thead>
+                <tr>
+                  <th style="width:60px;">Hạng</th>
+                  <th style="text-align:left;">Học sinh</th>
+                  <th style="width:90px;">Khối</th>
+                  <th style="width:170px;">Giáo viên</th>
+                  <th style="width:120px;">Ngày thi</th>
+                  <th style="width:110px;">Điểm thi</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${
+                  list.length === 0
+                    ? `<tr><td colspan="6" style="text-align:center; padding:16px; color:#64748b;">Không có dữ liệu</td></tr>`
+                    : list
+                        .map((item) => {
+                          let rankBadge = `<b>${item.rank}</b>`;
+                          if (item.rank === 1) rankBadge = `<span class="rank-medal rank-1">1</span>`;
+                          else if (item.rank === 2) rankBadge = `<span class="rank-medal rank-2">2</span>`;
+                          else if (item.rank === 3) rankBadge = `<span class="rank-medal rank-3">3</span>`;
+
+                          let scoreClass = 'score-mid';
+                          if (Math.abs(item.score - 10) < 1e-9) scoreClass = 'score-10';
+                          else if (item.score >= 8) scoreClass = 'score-high';
+
+                          return `
+                            <tr>
+                              <td class="stt-col">${rankBadge}</td>
+                              <td style="font-weight:700;">${escapeHtml(item.name)}</td>
+                              <td class="num-col">Khối ${escapeHtml(String(item.grade))}</td>
+                              <td class="num-col">GV ${escapeHtml(item.teacher)}</td>
+                              <td class="num-col">${escapeHtml(item.examDate || sess.date || '-')}</td>
+                              <td class="num-col"><span class="score-pill-badge ${scoreClass}">${fmtFixed(item.score, 2)}</span></td>
+                            </tr>
+                          `;
+                        })
+                        .join('')
+                }
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `;
+    });
+
+    container.innerHTML = html;
+  }
+
+  // ============================================================================
+  // SECTION 5: THỐNG KÊ THÍ SINH KHÔNG THI (DẤU X) & TRA CỨU
+  // ============================================================================
+  function renderAbsentAndSearchSection() {
+    const sess = getCurrentSession();
+    if (!sess) return;
+
+    const baseRecs = getFilteredRecords(sess, state.currentSubject, state.filterTeacher, state.filterGrade);
+    const totalAbsent = baseRecs.filter((r) => r.absent || r.score === null).length;
+
+    const strip = document.getElementById('absentSummaryStrip');
+    if (strip) {
+      const teachers = Array.from(new Set(baseRecs.map((r) => r.teacher)));
+      strip.innerHTML =
+        `<span style="background:#ffe4e6; color:#e11d48; padding:5px 12px; border-radius:8px; font-size:12.5px; font-weight:800;">Vắng thi (x) Môn ${escapeHtml(state.currentSubject)} - Khối ${escapeHtml(String(state.filterGrade))}: ${totalAbsent} / ${baseRecs.length} HS</span>` +
+        teachers
+          .map((t) => {
+            const cnt = baseRecs.filter((r) => r.teacher === t && (r.absent || r.score === null)).length;
+            return `<span style="background:#ffffff; border:1px solid #cbd5e1; padding:5px 10px; border-radius:8px; font-size:12px; font-weight:600;">GV ${escapeHtml(t)}: <b style="color:#e11d48;">${cnt}</b> vắng</span>`;
+          })
+          .join('');
+    }
+
+    const q = state.studentSearchQuery.trim().toLowerCase();
+    const filtered = baseRecs.filter((r) => {
+      if (state.studentStatusFilter === 'SCORED' && (r.absent || r.score === null)) return false;
+      if (state.studentStatusFilter === 'ABSENT' && !(r.absent || r.score === null)) return false;
+      if (state.studentStatusFilter === 'LT5' && (r.absent || r.score === null || r.score >= 5)) return false;
+      if (q && !r.name.toLowerCase().includes(q) && !r.teacher.toLowerCase().includes(q)) return false;
+      return true;
+    });
+
+    const tbody = document.querySelector('#tableAbsentStudents tbody');
+    if (!tbody) return;
+
+    if (filtered.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:18px; color:#64748b;">Không có học sinh nào trong mục này</td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = filtered
+      .slice(0, 1000)
+      .map((r, idx) => {
+        const isAbs = r.absent || r.score === null;
+        const badgeHtml = isAbs
+          ? `<span class="score-pill-badge score-absent">x (Không thi)</span>`
+          : `<span class="score-pill-badge ${r.score >= 8 ? 'score-high' : 'score-mid'}">${fmtFixed(r.score, 2)}</span>`;
+
+        return `
+          <tr>
+            <td class="stt-col">${idx + 1}</td>
+            <td style="font-weight:700;">${escapeHtml(r.name)}</td>
+            <td class="num-col">Khối ${escapeHtml(String(r.grade))}</td>
+            <td class="num-col">${escapeHtml(r.subject)}</td>
+            <td class="num-col">GV ${escapeHtml(r.teacher)}</td>
+            <td class="num-col">${badgeHtml}</td>
+            <td class="num-col">
+              <button type="button" class="btn btn-outline btn-sm" data-toggle-absent="${escapeHtml(r.id)}" style="padding:3px 8px; font-size:11.5px;">
+                ${isAbs ? 'Nhập điểm' : 'Tích x (Vắng)'}
+              </button>
+            </td>
+          </tr>
+        `;
+      })
+      .join('');
+
+    tbody.querySelectorAll('[data-toggle-absent]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const recId = btn.getAttribute('data-toggle-absent');
+        const target = sess.records.find((x) => x.id === recId);
+        if (!target) return;
+        if (target.absent || target.score === null) {
+          const valStr = prompt(`Nhập điểm thi cho học sinh ${target.name} (0 - 10):`, '7.5');
+          if (valStr === null) return;
+          const num = parseFloat(valStr.replace(',', '.'));
+          if (!isNaN(num) && num >= 0 && num <= 10) {
+            target.score = num;
+            target.absent = false;
+            saveSessionsToStorage();
+            refreshAllUI(false);
+            showToast(`Đã cập nhật điểm ${num} cho ${target.name}`);
+          }
+        } else {
+          target.score = null;
+          target.absent = true;
+          saveSessionsToStorage();
+          refreshAllUI(false);
+          showToast(`Đã tích dấu x (Không thi) cho ${target.name}`);
+        }
+      });
+    });
+  }
+
+  // ============================================================================
+  // SECTION 6: TOÀN CẢNH CÁC MÔN (Mỗi môn có tùy chọn chọn Khối riêng)
+  // ============================================================================
+  function renderAllSubjectsOverview() {
+    const sess = getCurrentSession();
+    const container = document.getElementById('allSubjectsGridContainer');
+    if (!sess || !container) return;
+    container.innerHTML = '';
+
+    sess.subjects.forEach((subj, idx) => {
+      const grades = getGradesForSubject(sess, subj);
+      if (!state.overviewSelectedGrades[subj] || !grades.includes(String(state.overviewSelectedGrades[subj]))) {
+        state.overviewSelectedGrades[subj] = grades[0] || '10';
+      }
+      const selectedGrade = state.overviewSelectedGrades[subj];
+
+      const recs = getFilteredRecords(sess, subj, 'ALL', selectedGrade);
+      const st = computeStatistics(recs, 0.5);
+
+      const card = document.createElement('div');
+      card.className = 'mini-subject-card';
+      const canvasId = `miniCanvas_${idx}`;
+
+      const gradeBtnsHtml = grades
+        .map((g) => {
+          const isAct = String(g) === String(selectedGrade) ? 'active' : '';
+          return `<button type="button" class="mini-grade-btn ${isAct}" data-ov-grade="${escapeHtml(String(g))}">Khối ${escapeHtml(String(g))}</button>`;
+        })
+        .join('');
+
+      card.innerHTML = `
+        <div style="background:#f8fafc; padding:11px 15px; border-bottom:1px solid #e2e8f0; display:flex; flex-direction:column; gap:8px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
+            <div style="font-size:14.5px; font-weight:800; color:#1e3a8a;">
+              ${escapeHtml(subj.toUpperCase())} — KHỐI ${escapeHtml(String(selectedGrade))}
+            </div>
+            <div class="mini-grade-pills">
+              ${gradeBtnsHtml}
+            </div>
+          </div>
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+            <div style="font-size:12px; color:#475569;">
+              Dự thi: <b>${fmtInt(st.count)}</b> • Vắng (x): <b style="color:#7c3aed;">${st.absentCount}</b> • ĐTB: <b style="color:#e11d48;">${fmtFixed(st.mean, 2)}</b> • Điểm 10: <b style="color:#059669;">${st.score10Count}</b>
+            </div>
+            <div style="display:flex; gap:5px;">
+              <button type="button" class="btn btn-outline btn-sm" data-focus-subj="${escapeHtml(subj)}">Chi tiết</button>
+              <button type="button" class="btn btn-primary btn-sm" data-export-subj="${escapeHtml(subj)}">Tải 4K</button>
+            </div>
+          </div>
+        </div>
+        <div style="padding:12px; height:240px; background:#fff;">
+          <canvas id="${canvasId}" style="width:100%; height:100%; display:block;"></canvas>
+        </div>
+      `;
+
+      container.appendChild(card);
+
+      requestAnimationFrame(() => {
+        const miniCanvas = document.getElementById(canvasId);
+        if (miniCanvas) {
+          drawMiniSubjectChart(miniCanvas, st);
+          miniCanvas.addEventListener('mousemove', (e) => {
+            const rect = miniCanvas.getBoundingClientRect();
+            const mx = e.clientX - rect.left;
+            const my = e.clientY - rect.top;
+            const hit = (miniCanvas._barRects || []).find(
+              (b) => mx >= b.x && mx <= b.x + b.w && my >= b.y && my <= b.y + b.h
+            );
+            miniCanvas.style.cursor = hit ? 'pointer' : 'default';
+          });
+          miniCanvas.addEventListener('click', (e) => {
+            const rect = miniCanvas.getBoundingClientRect();
+            const mx = e.clientX - rect.left;
+            const my = e.clientY - rect.top;
+            const hit = (miniCanvas._barRects || []).find(
+              (b) => mx >= b.x && mx <= b.x + b.w && my >= b.y && my <= b.y + b.h
+            );
+            if (hit) {
+              openBinStudentsModal(st, hit.index, subj, selectedGrade, 'ALL', sess);
+            }
+          });
+        }
+      });
+
+      card.querySelectorAll('[data-ov-grade]').forEach((gBtn) => {
+        gBtn.addEventListener('click', () => {
+          state.overviewSelectedGrades[subj] = gBtn.getAttribute('data-ov-grade');
+          renderAllSubjectsOverview();
+        });
+      });
+
+      card.querySelector('[data-focus-subj]').addEventListener('click', () => {
+        state.currentSubject = subj;
+        state.filterGrade = selectedGrade;
+        state.filterTeacher = 'ALL';
+        state.viewMode = 'phodiem';
+        updateViewModeVisibility();
+        refreshAllUI(true);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      });
+
+      card.querySelector('[data-export-subj]').addEventListener('click', () => {
+        exportHighResPhoDiemCard(sess, subj, 'ALL', selectedGrade);
+      });
+    });
+  }
+
+  function drawMiniSubjectChart(canvas, stats) {
+    const dpr = window.devicePixelRatio || 1;
+    const width = canvas.parentElement.clientWidth || 500;
+    const height = canvas.parentElement.clientHeight || 216;
+    canvas.width = Math.round(width * dpr);
+    canvas.height = Math.round(height * dpr);
+
+    const ctx = canvas.getContext('2d');
+    ctx.save();
+    ctx.scale(dpr, dpr);
+
+    const padTop = 24;
+    const padBottom = 42;
+    const padLeft = 36;
+    const padRight = 12;
+    const plotW = width - padLeft - padRight;
+    const plotH = height - padTop - padBottom;
+
+    const niceMax = computeNiceYMax(stats.maxBinCount * 1.2);
+    const numBins = stats.bins.length;
+    const slotW = plotW / numBins;
+    const barW = Math.max(5, slotW * 0.68);
+    canvas._barRects = [];
+
+    for (let i = 0; i <= 4; i++) {
+      const y = padTop + (plotH / 4) * i;
+      ctx.strokeStyle = i === 4 ? '#cbd5e1' : '#f1f5f9';
+      if (i < 4) ctx.setLineDash([3, 3]);
+      ctx.beginPath();
+      ctx.moveTo(padLeft, y);
+      ctx.lineTo(padLeft + plotW, y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    stats.bins.forEach((bin, i) => {
+      const barH = (bin.count / niceMax) * plotH;
+      const x = padLeft + i * slotW + (slotW - barW) / 2;
+      const y = padTop + plotH - barH;
+      const cx = padLeft + i * slotW + slotW / 2;
+
+      if (bin.high <= 5.001) {
+        ctx.fillStyle = '#f59e0b';
+      } else if (bin.low >= 7.999) {
+        ctx.fillStyle = '#10b981';
+      } else {
+        ctx.fillStyle = '#2563eb';
+      }
+
+      if (barH > 0.5) {
+        drawRoundedTopRect(ctx, x, y, barW, barH, 4);
+      } else {
+        ctx.fillStyle = '#e2e8f0';
+        ctx.fillRect(x, padTop + plotH - 1.5, barW, 1.5);
+      }
+
+      canvas._barRects.push({
+        index: i,
+        x: padLeft + i * slotW,
+        y: padTop,
+        w: slotW,
+        h: plotH,
+      });
+
+      if (bin.count > 0) {
+        ctx.fillStyle = '#0f172a';
+        ctx.font = '700 9px Inter, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+        ctx.fillText(String(bin.count), cx, y - 3);
+      }
+
+      ctx.save();
+      ctx.translate(cx, padTop + plotH + 7);
+      ctx.rotate(-Math.PI / 4.2);
+      ctx.font = '600 8.5px Inter, sans-serif';
+      ctx.fillStyle = '#64748b';
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(bin.shortLabel, 0, 0);
+      ctx.restore();
+    });
+
+    ctx.restore();
+  }
+
+  // ============================================================================
+  // ULTRA-HD 4K / 6K / SVG EXPORTERS
+  // ============================================================================
+  function getExportSettings() {
+    const scale = parseInt(document.getElementById('exportQualitySelect')?.value || '4', 10);
+    const format = document.getElementById('exportFormatSelect')?.value || 'png';
+    return { scale, format };
+  }
+
+  function slugify(str) {
+    return String(str || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/đ/g, 'd')
+      .replace(/Đ/g, 'D')
+      .replace(/[^a-zA-Z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '');
+  }
+
+  function exportHighResPhoDiemCard(session, subject, teacherFilter = 'ALL', gradeFilter = null) {
+    const { scale, format } = getExportSettings();
+    const targetGrade = gradeFilter || state.filterGrade;
+    const records = getFilteredRecords(session, subject, teacherFilter, targetGrade);
+    const stats = computeStatistics(records, state.binStep);
+
+    const teacherSuffix = teacherFilter !== 'ALL' ? ` • GV ${teacherFilter}` : '';
+    const filenameBase = `Pho_Diem_${slugify(subject)}_Khoi_${slugify(targetGrade)}_${slugify(session.shortName)}`;
+
+    const baseW = 1400;
+    const baseH = 700;
+    const offCanvas = document.createElement('canvas');
+    offCanvas.width = baseW * scale;
+    offCanvas.height = baseH * scale;
+    const ctx = offCanvas.getContext('2d');
+    ctx.save();
+    ctx.scale(scale, scale);
+
+    ctx.fillStyle = '#f8fafc';
+    ctx.fillRect(0, 0, baseW, baseH);
+
+    ctx.fillStyle = '#0f172a';
+    ctx.font = '800 24px Inter, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillText(
+      `PHỔ ĐIỂM MÔN ${subject.toUpperCase()} — KHỐI ${String(targetGrade).toUpperCase()}${teacherSuffix.toUpperCase()} (${session.shortName.toUpperCase()})`,
+      40,
+      30
+    );
+
+    ctx.fillStyle = '#2563eb';
+    ctx.font = '800 16px Inter, sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillText(state.centerName.toUpperCase(), baseW - 40, 34);
+
+    const chartX = 40;
+    const chartY = 76;
+    const chartW = 880;
+    const chartH = 584;
+
+    const subCanvas = document.createElement('canvas');
+    drawTHPTChartOnCanvas(subCanvas, stats, 1, -1, {
+      width: chartW,
+      height: chartH,
+      scale,
+      subjectOverride: subject,
+      gradeOverride: targetGrade,
+      teacherOverride: teacherFilter,
+    });
+    ctx.drawImage(subCanvas, 0, 0, chartW * scale, chartH * scale, chartX, chartY, chartW, chartH);
+    ctx.strokeStyle = '#cbd5e1';
+    ctx.strokeRect(chartX, chartY, chartW, chartH);
+
+    const tableX = 940;
+    const tableY = 76;
+    const tableW = 420;
+    const tableH = 584;
+
+    const tableRows = [
+      { name: 'Số TS dự thi', val: fmtInt(stats.count), pct: `/${fmtInt(stats.totalRoster)} ĐK`, color: '#0f172a' },
+      { name: 'Vắng thi (x)', val: fmtInt(stats.absentCount), pct: fmtPct(stats.absentPct, 2), color: '#7c3aed' },
+      { name: 'ĐTB', val: fmtFixed(stats.mean, 2), pct: '', color: '#e11d48' },
+      { name: 'Trung vị', val: fmtDec(stats.median, 2), pct: '', color: '#0f172a' },
+      { name: 'ĐLC', val: fmtFixed(stats.stdDev, 2), pct: '', color: '#e11d48' },
+      { name: 'MAD', val: fmtDec(stats.mad, 2), pct: '', color: '#0f172a' },
+      { name: '<5', val: fmtInt(stats.lt5Count), pct: fmtPct(stats.lt5Pct, 2), color: '#0f172a' },
+      { name: '> = 7', val: fmtInt(stats.gte7Count), pct: fmtPct(stats.gte7Pct, 2), color: '#0f172a' },
+      { name: 'Mode', val: fmtFixed(stats.mode, 2), pct: '', color: '#0f172a' },
+      { name: 'Điểm 10', val: fmtInt(stats.score10Count), pct: '', color: '#e11d48' },
+      { name: 'Điểm 0', val: fmtInt(stats.score0Count), pct: '', color: '#0f172a' },
+      { name: '< = 1', val: fmtInt(stats.lte1Count), pct: fmtPct(stats.lte1Pct, 2), color: '#0f172a' },
+    ];
+
+    const rowH = tableH / tableRows.length;
+    const col1W = 140;
+    const col2W = 140;
+    const col3W = tableW - col1W - col2W;
+
+    tableRows.forEach((r, idx) => {
+      const ry = tableY + idx * rowH;
+      ctx.fillStyle = '#1e3a8a';
+      ctx.fillRect(tableX, ry, col1W, rowH);
+
+      ctx.fillStyle = idx % 2 === 0 ? '#f8fafc' : '#ffffff';
+      ctx.fillRect(tableX + col1W, ry, col2W + col3W, rowH);
+
+      ctx.strokeStyle = '#cbd5e1';
+      ctx.strokeRect(tableX, ry, col1W, rowH);
+      ctx.strokeRect(tableX + col1W, ry, col2W, rowH);
+      ctx.strokeRect(tableX + col1W + col2W, ry, col3W, rowH);
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '700 16.5px Inter, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(r.name, tableX + 14, ry + rowH / 2);
+
+      ctx.fillStyle = r.color;
+      ctx.font = r.color !== '#0f172a' ? '800 18px Inter, sans-serif' : '700 17px Inter, sans-serif';
+      ctx.textAlign = 'right';
+      ctx.fillText(r.val, tableX + col1W + col2W - 12, ry + rowH / 2);
+
+      if (r.pct) {
+        ctx.fillStyle = r.color === '#7c3aed' ? '#7c3aed' : '#475569';
+        ctx.font = '600 15.5px Inter, sans-serif';
+        ctx.textAlign = 'right';
+        ctx.fillText(r.pct, tableX + tableW - 12, ry + rowH / 2);
+      }
+    });
+
+    ctx.restore();
+    triggerCanvasDownload(offCanvas, filenameBase, format === 'svg' ? 'png' : format);
+    showToast(`Đã tải ảnh phổ điểm ${subject} - Khối ${targetGrade} (${scale}K)`);
+  }
+
+  function exportMultiSessionImage() {
+    const { scale, format } = getExportSettings();
+    const subj = state.currentSubject;
+    const grade = state.filterGrade;
+    const sessionStatsList = state.sessions.map((sess) => ({
+      session: sess,
+      stats: computeStatistics(getFilteredRecords(sess, subj, state.filterTeacher, grade), 0.5),
+    }));
+
+    const baseW = Math.max(1360, 420 + sessionStatsList.length * 280);
+    const baseH = 980;
+    const canvas = document.createElement('canvas');
+    canvas.width = baseW * scale;
+    canvas.height = baseH * scale;
+    const ctx = canvas.getContext('2d');
+    ctx.save();
+    ctx.scale(scale, scale);
+
+    ctx.fillStyle = '#f8fafc';
+    ctx.fillRect(0, 0, baseW, baseH);
+
+    ctx.fillStyle = '#0f172a';
+    ctx.font = '800 22px Inter, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillText(
+      `THỐNG KÊ MÔN ${subj.toUpperCase()} (KHỐI ${grade}) QUA CÁC LẦN THI — ${state.centerName.toUpperCase()}`,
+      40,
+      26
+    );
+
+    const tx = 40;
+    const ty = 68;
+    const tw = baseW - 80;
+    const labelColW = 340;
+    const sessColW = (tw - labelColW) / sessionStatsList.length;
+    const rowH = 36;
+
+    ctx.fillStyle = '#1e3a8a';
+    ctx.fillRect(tx, ty, tw, 42);
+    ctx.strokeStyle = '#3b82f6';
+    ctx.strokeRect(tx, ty, labelColW, 42);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '700 15px Inter, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`CHỈ SỐ (KHỐI ${grade}) / LẦN THI`, tx + labelColW / 2, ty + 21);
+
+    sessionStatsList.forEach((item, idx) => {
+      const sx = tx + labelColW + idx * sessColW;
+      ctx.strokeRect(sx, ty, sessColW, 42);
+      ctx.fillText(item.session.shortName, sx + sessColW / 2, ty + 21);
+    });
+
+    const metricRows = [
+      { label: 'Số thí sinh dự thi', v1: (s) => fmtInt(s.count), v2: (s) => `/${fmtInt(s.totalRoster)} ĐK`, color: '#0f172a' },
+      { label: 'Số thí sinh vắng thi (x)', v1: (s) => fmtInt(s.absentCount), v2: (s) => fmtPct(s.absentPct, 2), color: '#7c3aed' },
+      { label: 'Điểm trung bình', v1: (s) => fmtFixed(s.mean, 2), v2: () => '', color: '#e11d48' },
+      { label: 'Trung vị', v1: (s) => fmtDec(s.median, 2), v2: () => '', color: '#0f172a' },
+      { label: 'Độ lệch chuẩn', v1: (s) => fmtFixed(s.stdDev, 2), v2: () => '', color: '#e11d48' },
+      { label: 'Độ lệch tuyệt đối trung vị (MAD)', v1: (s) => fmtDec(s.mad, 2), v2: () => '', color: '#0f172a' },
+      { label: 'Điểm dưới trung bình (<5)', v1: (s) => fmtInt(s.lt5Count), v2: (s) => fmtPct(s.lt5Pct, 2), color: '#7c3aed' },
+      { label: 'Điểm >= 7', v1: (s) => fmtInt(s.gte7Count), v2: (s) => fmtPct(s.gte7Pct, 2), color: '#7c3aed' },
+      { label: 'Mode', v1: (s) => fmtDec(s.mode, 2), v2: () => '', color: '#0f172a' },
+      { label: 'Số điểm 10', v1: (s) => fmtInt(s.score10Count), v2: () => '', color: '#e11d48' },
+      { label: 'Số điểm 0', v1: (s) => fmtInt(s.score0Count), v2: () => '', color: '#0f172a' },
+      { label: 'Số điểm <= 1', v1: (s) => fmtInt(s.lte1Count), v2: (s) => fmtPct(s.lte1Pct, 2), color: '#0f172a' },
+    ];
+
+    metricRows.forEach((mr, rIdx) => {
+      const ry = ty + 42 + rIdx * rowH;
+      ctx.fillStyle = '#1e3a8a';
+      ctx.fillRect(tx, ry, labelColW, rowH);
+      ctx.strokeStyle = '#cbd5e1';
+      ctx.strokeRect(tx, ry, labelColW, rowH);
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '700 14.5px Inter, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText(mr.label, tx + 12, ry + rowH / 2);
+
+      sessionStatsList.forEach((item, sIdx) => {
+        const sx = tx + labelColW + sIdx * sessColW;
+        const halfW = sessColW / 2;
+        ctx.fillStyle = rIdx % 2 === 0 ? '#f8fafc' : '#ffffff';
+        ctx.fillRect(sx, ry, sessColW, rowH);
+        ctx.strokeStyle = '#cbd5e1';
+        ctx.strokeRect(sx, ry, halfW, rowH);
+        ctx.strokeRect(sx + halfW, ry, halfW, rowH);
+
+        ctx.fillStyle = mr.color;
+        ctx.font = '600 15px Inter, sans-serif';
+        ctx.textAlign = 'right';
+        ctx.fillText(mr.v1(item.stats), sx + halfW - 10, ry + rowH / 2);
+        const val2 = mr.v2(item.stats);
+        if (val2) ctx.fillText(val2, sx + sessColW - 10, ry + rowH / 2);
+      });
+    });
+
+    const chartY = ty + 42 + metricRows.length * rowH + 24;
+    const chartH = baseH - chartY - 26;
+    const subCanvas = document.createElement('canvas');
+    drawMultiSessionOverlayChart(subCanvas, sessionStatsList, { width: tw, height: chartH, scale });
+    ctx.drawImage(subCanvas, 0, 0, tw * scale, chartH * scale, tx, chartY, tw, chartH);
+
+    ctx.restore();
+    triggerCanvasDownload(canvas, `So_Sanh_Cac_Lan_Thi_${slugify(subj)}_Khoi_${grade}`, format === 'svg' ? 'png' : format);
+    showToast(`Đã tải ảnh So sánh các lần thi Khối ${grade} (${scale}K)`);
+  }
+
+  function exportGroupRankingImage() {
+    const { scale, format } = getExportSettings();
+    const sess = getCurrentSession();
+    const subj = state.currentSubject;
+    const subjRecords = sess.records.filter((r) => r.subject === subj);
+    const allGrades = getGradesForSubject(sess, subj);
+
+    const baseW = 1380;
+    let baseH = 760;
+
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+
+    if (state.groupStatMode === 'grade_summary') {
+      baseH = 170 + allGrades.length * 44 + 40;
+      canvas.width = baseW * scale;
+      canvas.height = baseH * scale;
+      ctx.save();
+      ctx.scale(scale, scale);
+
+      ctx.fillStyle = '#f8fafc';
+      ctx.fillRect(0, 0, baseW, baseH);
+
+      ctx.fillStyle = '#0f172a';
+      ctx.font = '800 22px Inter, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      ctx.fillText(
+        `THỐNG KÊ ĐTB & ĐIỂM CAO NHẤT THEO TỪNG KHỐI MÔN ${subj.toUpperCase()} — ${state.centerName}`,
+        40,
+        28
+      );
+
+      const leftRows = Array.from(document.querySelectorAll('#tableGradeAvgAndMax tbody tr'));
+      const rightRows = Array.from(document.querySelectorAll('#tableGradeQuality tbody tr'));
+
+      drawGenericTableOnCanvas(
+        ctx,
+        40,
+        82,
+        [80, 75, 75, 85, 85, 240],
+        ['Khối', 'Dự thi', 'Vắng (x)', 'Điểm TB', 'Cao nhất', 'Thủ khoa Khối'],
+        leftRows
+      );
+
+      drawGenericTableOnCanvas(
+        ctx,
+        700,
+        82,
+        [90, 120, 145, 145, 140],
+        ['Khối', 'Điểm 10', '>= 8.0', '>= 7.0', '< 5.0'],
+        rightRows
+      );
+
+      ctx.restore();
+      triggerCanvasDownload(canvas, `Thong_Ke_Khoi_${slugify(subj)}`, format === 'svg' ? 'png' : format);
+      showToast(`Đã tải ảnh Thống kê theo Khối (${scale}K)`);
+      return;
+    }
+
+    const tables = Array.from(document.querySelectorAll('#teacherByGradeTablesWrap table'));
+    let totalRows = 0;
+    tables.forEach((t) => {
+      totalRows += t.querySelectorAll('tbody tr').length + 2;
+    });
+    baseH = 100 + totalRows * 40 + 40;
+    canvas.width = baseW * scale;
+    canvas.height = baseH * scale;
+    ctx.save();
+    ctx.scale(scale, scale);
+
+    ctx.fillStyle = '#f8fafc';
+    ctx.fillRect(0, 0, baseW, baseH);
+
+    ctx.fillStyle = '#0f172a';
+    ctx.font = '800 22px Inter, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillText(
+      `THỐNG KÊ THEO KHỐI LỚP CỦA TỪNG GIÁO VIÊN MÔN ${subj.toUpperCase()} — ${state.centerName}`,
+      40,
+      26
+    );
+
+    let curY = 76;
+    const boxes = Array.from(document.querySelectorAll('#teacherByGradeTablesWrap .thpt-rank-box'));
+    boxes.forEach((box) => {
+      const heading = box.querySelector('h3')?.textContent.trim() || '';
+      ctx.fillStyle = '#1e3a8a';
+      ctx.font = '800 16px Inter, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText(heading, 40, curY);
+      curY += 26;
+
+      const trs = Array.from(box.querySelectorAll('tbody tr'));
+      curY = drawGenericTableOnCanvas(
+        ctx,
+        40,
+        curY,
+        [55, 200, 80, 80, 110, 110, 110, 100, 145, 95, 145],
+        ['Hạng', 'Giáo viên', 'Dự thi', 'Vắng (x)', 'ĐTB của GV', 'ĐTB Nhóm', 'So với Nhóm', 'Cao nhất', 'Số điểm >=8', 'Điểm 10', 'Dưới TB (<5)'],
+        trs
+      );
+      curY += 24;
+    });
+
+    ctx.restore();
+    triggerCanvasDownload(canvas, `So_Sanh_GV_Theo_Khoi_${slugify(subj)}`, format === 'svg' ? 'png' : format);
+    showToast(`Đã tải ảnh So sánh GV theo Khối (${scale}K)`);
+  }
+
+  function drawGenericTableOnCanvas(ctx, x, y, colWidths, headers, domRows) {
+    const rh = 38;
+    let cx = x;
+    headers.forEach((h, i) => {
+      ctx.fillStyle = '#1e3a8a';
+      ctx.fillRect(cx, y, colWidths[i], rh);
+      ctx.strokeStyle = '#3b82f6';
+      ctx.strokeRect(cx, y, colWidths[i], rh);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '700 13.5px Inter, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(h, cx + colWidths[i] / 2, y + rh / 2);
+      cx += colWidths[i];
+    });
+
+    domRows.forEach((tr, rIdx) => {
+      const cells = Array.from(tr.querySelectorAll('td')).map((td) => td.textContent.trim());
+      const ry = y + (rIdx + 1) * rh;
+      let rx = x;
+      cells.forEach((text, cIdx) => {
+        ctx.fillStyle = cIdx === 0 ? '#eff6ff' : rIdx % 2 === 0 ? '#f8fafc' : '#ffffff';
+        ctx.fillRect(rx, ry, colWidths[cIdx], rh);
+        ctx.strokeStyle = '#cbd5e1';
+        ctx.strokeRect(rx, ry, colWidths[cIdx], rh);
+
+        ctx.fillStyle = cIdx === 0 ? '#1e40af' : cIdx === 4 ? '#e11d48' : '#0f172a';
+        ctx.font = cIdx === 0 || cIdx === 1 || cIdx === 4 ? '700 13.5px Inter, sans-serif' : '500 13.5px Inter, sans-serif';
+        ctx.textAlign = cIdx === 1 ? 'left' : 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(text, cIdx === 1 ? rx + 10 : rx + colWidths[cIdx] / 2, ry + rh / 2);
+        rx += colWidths[cIdx];
+      });
+    });
+
+    return y + (domRows.length + 1) * rh;
+  }
+
+  function exportTopStudentsImage() {
+    const { scale, format } = getExportSettings();
+    const sess = getCurrentSession();
+    const subj = state.currentSubject;
+    const grade = state.filterGrade;
+    const topN = Math.max(1, parseInt(state.topN, 10) || 20);
+    const { list } = getTopStudentsForSubject(sess, subj, topN, state.includeTies, state.filterTeacher, grade);
+
+    const rowH = 38;
+    const baseW = 1260;
+    const baseH = 140 + Math.max(list.length, 1) * rowH + 36;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = baseW * scale;
+    canvas.height = baseH * scale;
+    const ctx = canvas.getContext('2d');
+    ctx.save();
+    ctx.scale(scale, scale);
+
+    ctx.fillStyle = '#f8fafc';
+    ctx.fillRect(0, 0, baseW, baseH);
+
+    ctx.fillStyle = '#1e3a8a';
+    ctx.font = '800 23px Inter, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillText(
+      `TOP ${topN} HỌC SINH ĐIỂM CAO NHẤT MÔN ${subj.toUpperCase()} (KHỐI ${grade}) — ${state.centerName}`,
+      40,
+      26
+    );
+
+    ctx.fillStyle = '#475569';
+    ctx.font = '600 15px Inter, sans-serif';
+    ctx.fillText(sess.name, 40, 58);
+
+    const tx = 40;
+    const ty = 92;
+    const colWidths = [75, 435, 130, 240, 160, 140];
+    const headers = ['HẠNG', 'HỌC SINH', 'KHỐI', 'GIÁO VIÊN', 'NGÀY THI', 'ĐIỂM THI'];
+
+    let cx = tx;
+    headers.forEach((h, i) => {
+      ctx.fillStyle = '#1e3a8a';
+      ctx.fillRect(cx, ty, colWidths[i], 40);
+      ctx.strokeStyle = '#3b82f6';
+      ctx.strokeRect(cx, ty, colWidths[i], 40);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '700 14.5px Inter, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(h, cx + colWidths[i] / 2, ty + 20);
+      cx += colWidths[i];
+    });
+
+    list.forEach((item, rIdx) => {
+      const ry = ty + 40 + rIdx * rowH;
+      const cells = [
+        String(item.rank),
+        item.name,
+        `Khối ${item.grade}`,
+        `GV ${item.teacher}`,
+        item.examDate || sess.date || '-',
+        fmtFixed(item.score, 2),
+      ];
+
+      let rx = tx;
+      cells.forEach((val, cIdx) => {
+        ctx.fillStyle = cIdx === 0 ? '#eff6ff' : rIdx % 2 === 0 ? '#f8fafc' : '#ffffff';
+        ctx.fillRect(rx, ry, colWidths[cIdx], rowH);
+        ctx.strokeStyle = '#cbd5e1';
+        ctx.strokeRect(rx, ry, colWidths[cIdx], rowH);
+
+        ctx.fillStyle = cIdx === 0 ? '#1e40af' : cIdx === 5 ? '#e11d48' : '#0f172a';
+        ctx.font = cIdx === 0 || cIdx === 1 || cIdx === 5 ? '700 14.5px Inter, sans-serif' : '500 14px Inter, sans-serif';
+        ctx.textAlign = cIdx === 1 ? 'left' : 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(val, cIdx === 1 ? rx + 14 : rx + colWidths[cIdx] / 2, ry + rowH / 2);
+        rx += colWidths[cIdx];
+      });
+    });
+
+    ctx.restore();
+    triggerCanvasDownload(canvas, `Top_${topN}_${slugify(subj)}_Khoi_${grade}`, format === 'svg' ? 'png' : format);
+    showToast(`Đã tải ảnh Top ${topN} môn ${subj} Khối ${grade} (${scale}K)`);
+  }
+
+  function exportAbsentImage() {
+    const { scale, format } = getExportSettings();
+    const subj = state.currentSubject;
+    const grade = state.filterGrade;
+    const rows = Array.from(document.querySelectorAll('#tableAbsentStudents tbody tr'));
+
+    const baseW = 1180;
+    const baseH = 140 + Math.max(rows.length, 1) * 38 + 36;
+    const canvas = document.createElement('canvas');
+    canvas.width = baseW * scale;
+    canvas.height = baseH * scale;
+    const ctx = canvas.getContext('2d');
+    ctx.save();
+    ctx.scale(scale, scale);
+
+    ctx.fillStyle = '#f8fafc';
+    ctx.fillRect(0, 0, baseW, baseH);
+
+    ctx.fillStyle = '#e11d48';
+    ctx.font = '800 22px Inter, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillText(`DANH SÁCH THÍ SINH VẮNG THI (X) MÔN ${subj.toUpperCase()} (KHỐI ${grade}) — ${state.centerName}`, 40, 26);
+
+    const colWidths = [65, 380, 110, 180, 200, 165];
+    const headers = ['STT', 'HỌC SINH', 'KHỐI', 'BỘ MÔN', 'GIÁO VIÊN', 'TRẠNG THÁI'];
+    const rh = 38;
+    const ty = 78;
+    let cx = 40;
+    headers.forEach((h, i) => {
+      ctx.fillStyle = '#1e3a8a';
+      ctx.fillRect(cx, ty, colWidths[i], rh);
+      ctx.strokeStyle = '#3b82f6';
+      ctx.strokeRect(cx, ty, colWidths[i], rh);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '700 14px Inter, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(h, cx + colWidths[i] / 2, ty + rh / 2);
+      cx += colWidths[i];
+    });
+
+    rows.forEach((tr, rIdx) => {
+      const cells = Array.from(tr.querySelectorAll('td')).slice(0, 6).map((td) => td.textContent.trim());
+      if (cells.length < 6) return;
+      const ry = ty + (rIdx + 1) * rh;
+      let rx = 40;
+      cells.forEach((val, cIdx) => {
+        ctx.fillStyle = cIdx === 0 ? '#eff6ff' : rIdx % 2 === 0 ? '#f8fafc' : '#ffffff';
+        ctx.fillRect(rx, ry, colWidths[cIdx], rh);
+        ctx.strokeStyle = '#cbd5e1';
+        ctx.strokeRect(rx, ry, colWidths[cIdx], rh);
+        ctx.fillStyle = cIdx === 0 ? '#1e40af' : cIdx === 5 ? '#e11d48' : '#0f172a';
+        ctx.font = cIdx === 0 || cIdx === 1 || cIdx === 5 ? '700 14px Inter, sans-serif' : '500 14px Inter, sans-serif';
+        ctx.textAlign = cIdx === 1 ? 'left' : 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(val, cIdx === 1 ? rx + 12 : rx + colWidths[cIdx] / 2, ry + rh / 2);
+        rx += colWidths[cIdx];
+      });
+    });
+
+    ctx.restore();
+    triggerCanvasDownload(canvas, `DS_Vang_Thi_${slugify(subj)}_Khoi_${grade}`, format === 'svg' ? 'png' : format);
+    showToast(`Đã tải ảnh Danh sách Vắng thi (${scale}K)`);
+  }
+
+  function exportAbsentCSV() {
+    const sess = getCurrentSession();
+    if (!sess) return;
+    const recs = getFilteredRecords(sess, state.currentSubject, state.filterTeacher, state.filterGrade).filter(
+      (r) => r.absent || r.score === null
+    );
+    const lines = ['\uFEFFSTT,HỌC SINH,KHỐI,BỘ MÔN,GIÁO VIÊN,ĐIỂM THI,ĐỢT THI'];
+    recs.forEach((r, idx) => {
+      lines.push(`${idx + 1},"${r.name}","${r.grade}","${r.subject}","${r.teacher}",x,"${sess.name}"`);
+    });
+    downloadBlob(
+      new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8' }),
+      `DS_Vang_Thi_${slugify(state.currentSubject)}_Khoi_${state.filterGrade}.csv`
+    );
+    showToast('Đã xuất CSV danh sách học sinh vắng thi (x)');
+  }
+
+  function triggerCanvasDownload(canvas, filenameBase, format) {
+    const mime = format === 'jpeg' ? 'image/jpeg' : 'image/png';
+    const ext = format === 'jpeg' ? 'jpg' : 'png';
+    canvas.toBlob((blob) => {
+      if (blob) downloadBlob(blob, `${filenameBase}.${ext}`);
+    }, mime, 1.0);
+  }
+
+  function downloadBlob(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, 300);
+  }
+
+  function batchExportAllSubjects() {
+    const sess = getCurrentSession();
+    if (!sess || !sess.subjects.length) return;
+    const tasks = [];
+    sess.subjects.forEach((subj) => {
+      const selectedG = state.overviewSelectedGrades[subj] || getGradesForSubject(sess, subj)[0];
+      if (selectedG) tasks.push({ subj, grade: selectedG });
+    });
+    showToast(`Đang tải ${tasks.length} ảnh phổ điểm 4K...`);
+    tasks.forEach((t, i) => {
+      setTimeout(() => {
+        exportHighResPhoDiemCard(sess, t.subj, 'ALL', t.grade);
+      }, i * 380);
+    });
+  }
+
+  function exportTopStudentsCSV() {
+    const sess = getCurrentSession();
+    if (!sess) return;
+    const topN = Math.max(1, parseInt(state.topN, 10) || 20);
+    const lines = ['\uFEFFHẠNG,HỌC SINH,KHỐI,BỘ MÔN,GIÁO VIÊN,NGÀY THI,ĐIỂM THI,ĐỢT THI'];
+
+    const { list } = getTopStudentsForSubject(
+      sess,
+      state.currentSubject,
+      topN,
+      state.includeTies,
+      state.filterTeacher,
+      state.filterGrade
+    );
+    list.forEach((r) => {
+      lines.push(`${r.rank},"${r.name}","${r.grade}","${r.subject}","${r.teacher}","${r.examDate || sess.date || ''}",${r.score},"${sess.name}"`);
+    });
+
+    downloadBlob(
+      new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8' }),
+      `Top_${topN}_${slugify(state.currentSubject)}_Khoi_${state.filterGrade}.csv`
+    );
+    showToast(`Đã xuất file CSV Top ${topN}`);
+  }
+
+  // ============================================================================
+  // DRAG & DROP FILE UPLOAD (Auto-recognizes L1.xlsx, L2.xlsx, L3.xlsx, L4.xlsx...)
+  // ============================================================================
+  function extractAdminExamNumber(filename) {
+    if (!filename) return null;
+    const base = filename.replace(/\.[^.]+$/, '').trim();
+    const matchL = base.match(/^L(\d+)$/i) || base.match(/^Lan[_\s-]*(\d+)$/i) || base.match(/^Lần[_\s-]*(\d+)$/i);
+    if (matchL) return parseInt(matchL[1], 10);
+    return null;
+  }
+
+  function readSingleFileToRows(file) {
+    return new Promise((resolve, reject) => {
+      const ext = file.name.split('.').pop().toLowerCase();
+      if (ext === 'xlsx' || ext === 'xls') {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          try {
+            const rows = parseWorkbookBufferToRows(e.target.result);
+            resolve(rows);
+          } catch (err) {
+            reject(err);
+          }
+        };
+        reader.onerror = () => reject(new Error('Không đọc được file Excel'));
+        reader.readAsArrayBuffer(file);
+      } else {
+        const reader = new FileReader();
+        reader.onload = (e) => resolve(parseCSVToRows(e.target.result));
+        reader.onerror = () => reject(new Error('Không đọc được file CSV'));
+        reader.readAsText(file, 'utf-8');
+      }
+    });
+  }
+
+  async function handleIncomingFiles(fileList) {
+    if (!fileList || fileList.length === 0) return;
+    const files = Array.from(fileList);
+
+    // Check if files are L1, L2, L3, L4... or if multiple files were selected
+    if (files.length === 1 && extractAdminExamNumber(files[0].name) === null) {
+      try {
+        const rows = await readSingleFileToRows(files[0]);
+        openUploadSessionModal(rows, files[0].name);
+      } catch (err) {
+        showToast('Lỗi đọc file: ' + err.message);
+      }
+      return;
+    }
+
+    // Auto-import L1, L2, L3, L4... (or batch files) directly into top dropdown!
+    let importedNames = [];
+    let lastAddedSession = null;
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      try {
+        const rows = await readSingleFileToRows(file);
+        const parsed = parseCenterRows(rows);
+        if (parsed.totalRecords === 0) continue;
+
+        const examNum = extractAdminExamNumber(file.name);
+        if (examNum !== null) {
+          const sessObj = upsertAdminSessionFromParsed(examNum, file.name, parsed);
+          if (sessObj) {
+            lastAddedSession = sessObj;
+            importedNames.push(`Lần thi ${examNum} (${file.name})`);
+          }
+        } else {
+          const nextNum = state.sessions.length + 1;
+          const newSess = {
+            id: 'sess-' + Date.now() + '-' + i,
+            name: `Lần thi ${nextNum} (${file.name})`,
+            shortName: `Lần ${nextNum} (${file.name})`,
+            date: new Date().toLocaleDateString('vi-VN'),
+            records: parsed.records,
+            subjects: parsed.subjects,
+          };
+          state.sessions.push(newSess);
+          lastAddedSession = newSess;
+          importedNames.push(newSess.name);
+        }
+      } catch (err) {
+        showToast(`Lỗi đọc file ${file.name}: ${err.message}`);
+      }
+    }
+
+    if (lastAddedSession) {
+      state.currentSessionId = lastAddedSession.id;
+      ensureValidGradeAndTeacher();
+      saveSessionsToStorage();
+      refreshAllUI(true);
+      showToast(`Đã tự động nhận diện & nạp: ${importedNames.join(', ')}`);
+    } else {
+      showToast('Không tìm thấy dữ liệu hợp lệ trong file tải lên');
+    }
+  }
+
+  function handleIncomingFile(file) {
+    if (file) handleIncomingFiles([file]);
+  }
+
+  function openUploadSessionModal(rows, filename) {
+    const parsed = parseCenterRows(rows);
+    if (parsed.totalRecords === 0) {
+      showToast('File không đúng định dạng mẫu danh sách của trung tâm');
+      return;
+    }
+
+    state.pendingUploadRows = parsed;
+    const absentCnt = parsed.records.filter((r) => r.absent).length;
+
+    document.getElementById('uploadFileSummaryBox').innerHTML = `
+      <div><b>File:</b> ${escapeHtml(filename)}</div>
+      <div style="margin-top:4px;">
+        • Tổng danh sách: <b>${fmtInt(parsed.totalRecords)}</b> HS (${fmtInt(parsed.validScoreCount)} có điểm • <b>${fmtInt(absentCnt)}</b> vắng thi x)<br/>
+        • Bộ môn (${parsed.subjects.length}): <b>${parsed.subjects.map(escapeHtml).join(', ')}</b>
+      </div>
+    `;
+
+    const blankNotice = document.getElementById('blankScoreNotice');
+    if (parsed.validScoreCount === 0) {
+      blankNotice.style.display = 'block';
+      document.getElementById('autoFillMockScoresCheckbox').checked = true;
+    } else {
+      blankNotice.style.display = 'none';
+    }
+
+    const nextIdx = state.sessions.length + 1;
+    document.getElementById('newSessionNameInput').value = `Lần ${nextIdx} (${new Date().toLocaleDateString('vi-VN')})`;
+    document.getElementById('newSessionShortInput').value = `Lần ${nextIdx}`;
+    document.getElementById('uploadSessionModal').classList.add('open');
+  }
+
+  function confirmUploadSession() {
+    const parsed = state.pendingUploadRows;
+    if (!parsed) return;
+
+    let finalRecords = parsed.records;
+    const autoFill = document.getElementById('autoFillMockScoresCheckbox')?.checked;
+    if (parsed.validScoreCount === 0 && autoFill) {
+      finalRecords = fillMockScoresForRecords(finalRecords);
+    }
+
+    const mode = document.getElementById('uploadActionMode').value;
+    const todayStr = new Date().toLocaleDateString('vi-VN');
+
+    if (mode === 'replace') {
+      const cur = getCurrentSession();
+      if (cur) {
+        cur.records = finalRecords;
+        cur.subjects = parsed.subjects;
+        showToast(`Đã cập nhật "${cur.name}"`);
+      }
+    } else {
+      const name = document.getElementById('newSessionNameInput').value.trim() || `Lần ${state.sessions.length + 1}`;
+      const shortName = document.getElementById('newSessionShortInput').value.trim() || name;
+      const newSess = {
+        id: 'sess-' + Date.now(),
+        name,
+        shortName,
+        date: todayStr,
+        records: finalRecords,
+        subjects: parsed.subjects,
+      };
+      state.sessions.push(newSess);
+      state.currentSessionId = newSess.id;
+      showToast(`Đã thêm "${name}"`);
+    }
+
+    ensureValidGradeAndTeacher();
+    saveSessionsToStorage();
+    document.getElementById('uploadSessionModal').classList.remove('open');
+    refreshAllUI(true);
+  }
+
+  // ============================================================================
+  // VIEW MODE & REFRESH
+  // ============================================================================
+  function updateViewModeVisibility() {
+    const v = state.viewMode;
+    document.getElementById('sectionPhoDiem').style.display = v === 'all' || v === 'phodiem' ? '' : 'none';
+    document.getElementById('sectionMultiSession').style.display = v === 'all' || v === 'multisession' ? '' : 'none';
+    document.getElementById('sectionGroupRanking').style.display = v === 'all' || v === 'grouprank' ? '' : 'none';
+    document.getElementById('sectionTopStudents').style.display = v === 'all' || v === 'topstudents' ? '' : 'none';
+    document.getElementById('sectionAbsentAndSearch').style.display = v === 'all' || v === 'absent' ? '' : 'none';
+    document.getElementById('sectionAllSubjectsOverview').style.display = v === 'all' || v === 'allsubjects' ? '' : 'none';
+  }
+
+  function refreshAllUI(animateChart = false) {
+    ensureValidGradeAndTeacher();
+    renderSessionPills();
+    renderSubjectTabs();
+    renderTeacherAndGradeFilters();
+
+    const sess = getCurrentSession();
+    const records = getFilteredRecords(sess, state.currentSubject, state.filterTeacher, state.filterGrade);
+    const stats = computeStatistics(records, state.binStep);
+
+    updateTHPTMainSection(stats);
+
+    if (animateChart) {
+      triggerChartAnimation(stats);
+    } else {
+      drawTHPTChartOnCanvas(document.getElementById('phoDiemCanvas'), stats, 1, -1);
+    }
+    renderSelectedBinInlinePanel(stats);
+
+    renderMultiSessionComparison();
+    renderGroupRankingSection();
+    renderTopStudentsSection();
+    renderAbsentAndSearchSection();
+    renderAllSubjectsOverview();
+  }
+
+  function showToast(msg) {
+    const container = document.getElementById('toastContainer');
+    if (!container) return;
+    const item = document.createElement('div');
+    item.className = 'toast-item';
+    item.innerHTML = `<span style="width:7px; height:7px; border-radius:50%; background:#38bdf8;"></span><span>${escapeHtml(msg)}</span>`;
+    container.appendChild(item);
+    setTimeout(() => {
+      item.style.opacity = '0';
+      item.style.transition = 'opacity 0.2s ease';
+      setTimeout(() => item.remove(), 220);
+    }, 3000);
+  }
+
+  function escapeHtml(str) {
+    return String(str == null ? '' : str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  // ============================================================================
+  // BIND EVENTS
+  // ============================================================================
+  function bindEvents() {
+    document.getElementById('centerNameInput')?.addEventListener('input', (e) => {
+      state.centerName = e.target.value.trim() || 'TRUNG TÂM MINH HOÀNG';
+      localStorage.setItem(CENTER_NAME_KEY, state.centerName);
+      refreshAllUI(false);
+    });
+
+    document.getElementById('btnResetDemoData')?.addEventListener('click', () => resetToDemoSessions(true));
+
+    document.getElementById('btnDownloadBlankTemplate')?.addEventListener('click', () => {
+      const content = '\uFEFF' + (window.CENTER_SAMPLE_DATA?.template_blank || '');
+      downloadBlob(new Blob([content], { type: 'text/csv;charset=utf-8' }), 'mau_diem_trung_tam_minh_hoang.csv');
+      showToast('Đã tải file mẫu trống');
+    });
+
+    document.getElementById('btnDownloadSampleFilled')?.addEventListener('click', () => {
+      const latestCsv = window.CENTER_SAMPLE_DATA?.sessions?.[0]?.csv || '';
+      downloadBlob(new Blob(['\uFEFF' + latestCsv], { type: 'text/csv;charset=utf-8' }), 'diem_thi_L1_minh_hoang.csv');
+      showToast('Đã tải file điểm L1 mẫu');
+    });
+
+    // Top Session Dropdown (#topSessionDropdown)
+    document.getElementById('topSessionDropdown')?.addEventListener('change', (e) => {
+      const val = e.target.value;
+      if (val === '__COMPARE_ALL__') {
+        state.viewMode = 'multisession';
+        document.querySelectorAll('#viewModeTabs .view-mode-btn').forEach((b) => {
+          b.classList.toggle('active', b.getAttribute('data-view') === 'multisession');
+        });
+        updateViewModeVisibility();
+        refreshAllUI(true);
+        return;
+      }
+      state.currentSessionId = val;
+      if (state.viewMode === 'multisession') {
+        state.viewMode = 'all';
+        document.querySelectorAll('#viewModeTabs .view-mode-btn').forEach((b) => {
+          b.classList.toggle('active', b.getAttribute('data-view') === 'all');
+        });
+        updateViewModeVisibility();
+      }
+      ensureValidGradeAndTeacher();
+      refreshAllUI(true);
+    });
+
+    // Top Quick Action Buttons
+    document.getElementById('btnTopViewPhoDiem')?.addEventListener('click', () => {
+      state.viewMode = 'all';
+      document.querySelectorAll('#viewModeTabs .view-mode-btn').forEach((b) => {
+        b.classList.toggle('active', b.getAttribute('data-view') === 'all');
+      });
+      updateViewModeVisibility();
+      refreshAllUI(true);
+      document.getElementById('sectionPhoDiem')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+
+    document.getElementById('btnTopViewScoreList')?.addEventListener('click', () => {
+      state.viewMode = 'absent';
+      state.studentStatusFilter = 'ALL';
+      const statusSel = document.getElementById('studentStatusFilter');
+      if (statusSel) statusSel.value = 'ALL';
+      document.querySelectorAll('#viewModeTabs .view-mode-btn').forEach((b) => {
+        b.classList.toggle('active', b.getAttribute('data-view') === 'absent');
+      });
+      updateViewModeVisibility();
+      refreshAllUI(false);
+      document.getElementById('sectionAbsentAndSearch')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+
+    document.getElementById('btnTopCompareSessions')?.addEventListener('click', () => {
+      state.viewMode = 'multisession';
+      document.querySelectorAll('#viewModeTabs .view-mode-btn').forEach((b) => {
+        b.classList.toggle('active', b.getAttribute('data-view') === 'multisession');
+      });
+      updateViewModeVisibility();
+      refreshAllUI(true);
+      document.getElementById('sectionMultiSession')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+
+    document.getElementById('btnDeleteCurrentSession')?.addEventListener('click', () => {
+      if (state.sessions.length > 1) {
+        deleteSession(state.currentSessionId);
+      }
+    });
+
+    const fileInput = document.getElementById('fileInputHidden');
+    const dropzone = document.getElementById('dropzoneArea');
+    const globalOverlay = document.getElementById('globalDropOverlay');
+
+    dropzone?.addEventListener('click', () => fileInput?.click());
+    document.getElementById('btnBrowseFile')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      fileInput?.click();
+    });
+
+    fileInput?.addEventListener('change', (e) => {
+      if (e.target.files?.length) handleIncomingFiles(e.target.files);
+      fileInput.value = '';
+    });
+
+    let dragCounter = 0;
+    window.addEventListener('dragenter', (e) => {
+      e.preventDefault();
+      dragCounter++;
+      globalOverlay?.classList.add('active');
+    });
+    window.addEventListener('dragleave', (e) => {
+      e.preventDefault();
+      dragCounter--;
+      if (dragCounter <= 0) {
+        dragCounter = 0;
+        globalOverlay?.classList.remove('active');
+      }
+    });
+    window.addEventListener('dragover', (e) => e.preventDefault());
+    window.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dragCounter = 0;
+      globalOverlay?.classList.remove('active');
+      if (e.dataTransfer?.files?.length) handleIncomingFiles(e.dataTransfer.files);
+    });
+
+    document.getElementById('btnCloseUploadModal')?.addEventListener('click', () => {
+      document.getElementById('uploadSessionModal').classList.remove('open');
+    });
+    document.getElementById('btnCancelUploadModal')?.addEventListener('click', () => {
+      document.getElementById('uploadSessionModal').classList.remove('open');
+    });
+    document.getElementById('btnCloseBinModal')?.addEventListener('click', () => {
+      document.getElementById('binStudentsModal')?.classList.remove('open');
+    });
+    document.getElementById('binStudentsModal')?.addEventListener('click', (e) => {
+      if (e.target.id === 'binStudentsModal') {
+        document.getElementById('binStudentsModal')?.classList.remove('open');
+      }
+    });
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        document.getElementById('binStudentsModal')?.classList.remove('open');
+        document.getElementById('uploadSessionModal')?.classList.remove('open');
+      }
+    });
+    document.getElementById('uploadActionMode')?.addEventListener('change', (e) => {
+      const isNew = e.target.value === 'new';
+      document.getElementById('newSessionNameGroup').style.display = isNew ? 'block' : 'none';
+      document.getElementById('newSessionShortGroup').style.display = isNew ? 'block' : 'none';
+    });
+    document.getElementById('btnConfirmUploadSession')?.addEventListener('click', confirmUploadSession);
+
+    document.querySelectorAll('.bin-step-pill').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.bin-step-pill').forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+        state.binStep = parseFloat(btn.getAttribute('data-step')) || 0.5;
+        refreshAllUI(true);
+      });
+    });
+
+    document.getElementById('toggleBellCurve')?.addEventListener('change', (e) => {
+      state.showBellCurve = e.target.checked;
+      refreshAllUI(false);
+    });
+
+    document.querySelectorAll('#viewModeTabs .view-mode-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('#viewModeTabs .view-mode-btn').forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+        state.viewMode = btn.getAttribute('data-view') || 'all';
+        updateViewModeVisibility();
+        refreshAllUI(true);
+      });
+    });
+
+    document.querySelectorAll('#groupStatModeTabs .sub-nav-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('#groupStatModeTabs .sub-nav-btn').forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+        state.groupStatMode = btn.getAttribute('data-gmode') || 'teacher_by_grade';
+        renderGroupRankingSection();
+      });
+    });
+
+    document.getElementById('compareGradeFilter')?.addEventListener('change', (e) => {
+      state.compareGradeFilter = e.target.value;
+      renderGroupRankingSection();
+    });
+
+    const topNInput = document.getElementById('topNInput');
+    topNInput?.addEventListener('input', (e) => {
+      const v = parseInt(e.target.value, 10);
+      if (!isNaN(v) && v > 0) {
+        state.topN = v;
+        renderTopStudentsSection();
+      }
+    });
+
+    document.querySelectorAll('.quick-top-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const val = parseInt(btn.getAttribute('data-top'), 10) || 20;
+        state.topN = val;
+        if (topNInput) topNInput.value = String(val);
+        renderTopStudentsSection();
+      });
+    });
+
+    document.getElementById('includeTiesCheckbox')?.addEventListener('change', (e) => {
+      state.includeTies = e.target.checked;
+      renderTopStudentsSection();
+    });
+
+    document.getElementById('showAllSubjectsTopCheckbox')?.addEventListener('change', (e) => {
+      state.showAllSubjectsTop = e.target.checked;
+      renderTopStudentsSection();
+    });
+
+    document.getElementById('studentSearchInput')?.addEventListener('input', (e) => {
+      state.studentSearchQuery = e.target.value;
+      renderAbsentAndSearchSection();
+    });
+    document.getElementById('studentStatusFilter')?.addEventListener('change', (e) => {
+      state.studentStatusFilter = e.target.value;
+      renderAbsentAndSearchSection();
+    });
+    document.getElementById('btnExportAbsentCSV')?.addEventListener('click', exportAbsentCSV);
+    document.getElementById('btnExportAbsentImg')?.addEventListener('click', exportAbsentImage);
+
+    document.getElementById('btnReplayAnimation')?.addEventListener('click', () => refreshAllUI(true));
+    document.getElementById('btnExportCurrentPhoDiem')?.addEventListener('click', () => {
+      exportHighResPhoDiemCard(getCurrentSession(), state.currentSubject, state.filterTeacher, state.filterGrade);
+    });
+    document.getElementById('btnExportMultiSession')?.addEventListener('click', exportMultiSessionImage);
+    document.getElementById('btnExportGroupRanking')?.addEventListener('click', exportGroupRankingImage);
+    document.getElementById('btnExportTopStudentsImg')?.addEventListener('click', exportTopStudentsImage);
+    document.getElementById('btnExportTopCSV')?.addEventListener('click', exportTopStudentsCSV);
+    document.getElementById('btnBatchExportAll')?.addEventListener('click', batchExportAllSubjects);
+    document.getElementById('btnBatchExportFromGrid')?.addEventListener('click', batchExportAllSubjects);
+
+    window.addEventListener('resize', () => refreshAllUI(false));
+    setupMainChartInteractivity();
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    loadInitialData();
+    bindEvents();
+    updateViewModeVisibility();
+    refreshAllUI(true);
+  });
+})();
