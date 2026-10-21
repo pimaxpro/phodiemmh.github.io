@@ -117,6 +117,9 @@
     const rawAccounts = Array.isArray(rawCfg.accounts) ? rawCfg.accounts : [];
     const accounts = rawAccounts.map((acc) => {
       const uname = String(acc.username || '').trim().toLowerCase();
+      const aliases = Array.isArray(acc.aliases)
+        ? acc.aliases.map((a) => String(a || '').trim().toLowerCase()).filter(Boolean)
+        : [];
       const role = String(acc.role || 'USER').trim().toUpperCase() === 'ADMIN' ? 'ADMIN' : 'USER';
       const subjs = Array.isArray(acc.subjects)
         ? acc.subjects.map((s) => (String(s).toUpperCase() === 'ALL' ? 'ALL' : normalizeSubjectName(s)))
@@ -124,6 +127,7 @@
       const pwdDigest = computeSecureDigest(`${uname}::${String(acc.password || '')}`);
       return Object.freeze({
         username: uname,
+        aliases: Object.freeze(aliases),
         passwordDigest: pwdDigest,
         role,
         displayName: String(acc.displayName || acc.username || 'Người dùng').trim(),
@@ -4224,10 +4228,12 @@
         return;
       }
 
-      const candidateDigest = computeSecureDigest(`${uname}::${pwd}`);
-      const matched = PRIVATE_AUTH_VAULT.accounts.find(
-        (acc) => acc.username === uname && constantTimeEquals(acc.passwordDigest, candidateDigest)
-      );
+      const matched = PRIVATE_AUTH_VAULT.accounts.find((acc) => {
+        const isUserMatch = acc.username === uname || (Array.isArray(acc.aliases) && acc.aliases.includes(uname));
+        if (!isUserMatch) return false;
+        const candidateDigest = computeSecureDigest(`${acc.username}::${pwd}`);
+        return constantTimeEquals(acc.passwordDigest, candidateDigest);
+      });
 
       if (!matched) {
         const curLock = getLockoutState();
