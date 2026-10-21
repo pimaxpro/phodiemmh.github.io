@@ -919,6 +919,162 @@
   }
 
   // ============================================================================
+  // LATEX FORMULA EXPLANATIONS FOR STATISTICAL INDICATORS
+  // ============================================================================
+  const STAT_LATEX_EXPLANATIONS = {
+    sots: {
+      title: 'Số thí sinh dự thi',
+      symbol: 'n',
+      formula: 'n = N_{\\text{ĐK}} - n_{\\text{vắng}}',
+      desc: 'Tổng số thí sinh thực tế có mặt làm bài và có điểm hợp lệ $x_i \\in [0, 10]$ trên tổng danh sách đăng ký $N_{\\text{ĐK}}$.',
+    },
+    absent: {
+      title: 'Thí sinh vắng thi (x)',
+      symbol: 'n_{\\text{vắng}}',
+      formula: '\\%\\text{Vắng} = \\dfrac{n_{\\text{vắng}}}{N_{\\text{ĐK}}} \\times 100\\%',
+      desc: 'Số lượng và tỷ lệ phần trăm học sinh có tên trong danh sách nhưng vắng mặt (được đánh dấu $x$).',
+    },
+    dtb: {
+      title: 'Điểm trung bình cộng',
+      symbol: '\\bar{x}',
+      formula: '\\bar{x} = \\dfrac{1}{n}\\sum_{i=1}^{n} x_i',
+      desc: 'Trung bình cộng điểm số của toàn bộ $n$ thí sinh dự thi, phản ánh mặt bằng điểm chung của nhóm/khối.',
+    },
+    median: {
+      title: 'Trung vị (Median)',
+      symbol: 'M_e',
+      formula:
+        'M_e = \\begin{cases} x_{(k)} & \\text{nếu } n = 2k-1 \\\\[4pt] \\dfrac{x_{(k)} + x_{(k+1)}}{2} & \\text{nếu } n = 2k \\end{cases}',
+      desc: 'Điểm số đứng chính giữa dãy điểm đã sắp xếp tăng dần $x_{(1)} \\le x_{(2)} \\le \\dots \\le x_{(n)}$ ($50\\%$ thí sinh đạt $\\le M_e$ và $50\\%$ đạt $\\ge M_e$).',
+    },
+    dlc: {
+      title: 'Độ lệch chuẩn (Standard Deviation)',
+      symbol: '\\sigma',
+      formula: '\\sigma = \\sqrt{\\dfrac{1}{n}\\sum_{i=1}^{n}\\left(x_i - \\bar{x}\\right)^2}',
+      desc: 'Đo mức độ phân tán điểm số quanh Điểm trung bình $\\bar{x}$. Khi $\\sigma$ nhỏ: học lực đồng đều; khi $\\sigma$ lớn: mức độ phân hóa mạnh.',
+    },
+    mad: {
+      title: 'Độ lệch tuyệt đối trung vị (MAD)',
+      symbol: '\\text{MAD}',
+      formula: '\\text{MAD} = \\text{Median}\\Big(\\big\\{\\,|x_i - M_e| \\;\\big|\\; i = 1,\\dots,n\\,\\big\\}\\Big)',
+      desc: 'Trung vị của độ lệch tuyệt đối giữa từng điểm $x_i$ với Trung vị $M_e$. Đây là thước đo độ phân tán bền vững, không bị nhiễu bởi các điểm đột biến.',
+    },
+    lt5: {
+      title: 'Điểm dưới trung bình (< 5.0)',
+      symbol: 'x_i < 5',
+      formula: '\\%(x < 5) = \\dfrac{\\#\\big\\{x_i < 5.0\\big\\}}{n} \\times 100\\%',
+      desc: 'Số lượng và tỷ lệ phần trăm thí sinh có điểm bài thi dưới ngưỡng trung bình ($x_i < 5.0$).',
+    },
+    gte7: {
+      title: 'Điểm Khá – Giỏi (>= 7.0)',
+      symbol: 'x_i \\ge 7',
+      formula: '\\%(x \\ge 7) = \\dfrac{\\#\\big\\{x_i \\ge 7.0\\big\\}}{n} \\times 100\\%',
+      desc: 'Số lượng và tỷ lệ phần trăm thí sinh đạt kết quả từ mức Khá – Giỏi trở lên ($x_i \\ge 7.0$).',
+    },
+    mode: {
+      title: 'Mốt của phân phối điểm (Mode)',
+      symbol: 'M_o',
+      formula: 'M_o = \\arg\\max_{x} \\, f(x)',
+      desc: 'Mức điểm $x$ có tần số xuất hiện $f(x)$ lớn nhất (mức điểm có nhiều thí sinh đạt được nhất trong kỳ thi).',
+    },
+    score10: {
+      title: 'Điểm tuyệt đối (Điểm 10)',
+      symbol: 'x_i = 10',
+      formula: '\\%(x = 10) = \\dfrac{\\#\\big\\{x_i = 10.0\\big\\}}{n} \\times 100\\%',
+      desc: 'Số lượng và tỷ lệ phần trăm thí sinh đạt điểm tối đa $x_i = 10.0$ trong bài thi.',
+    },
+    score0: {
+      title: 'Điểm 0',
+      symbol: 'x_i = 0',
+      formula: 'n_0 = \\#\\big\\{x_i = 0.0\\big\\}',
+      desc: 'Số lượng thí sinh có mặt dự thi nhưng đạt kết quả $x_i = 0.0$ điểm.',
+    },
+    lte1: {
+      title: 'Ngưỡng điểm liệt (<= 1.0)',
+      symbol: 'x_i \\le 1',
+      formula: '\\%(x \\le 1) = \\dfrac{\\#\\big\\{x_i \\le 1.0\\big\\}}{n} \\times 100\\%',
+      desc: 'Số lượng và tỷ lệ phần trăm thí sinh có điểm $x_i \\le 1.0$ (ngưỡng điểm liệt theo quy chế thi THPT Quốc gia).',
+    },
+  };
+
+  function renderLatexFormula(tex, displayMode = false) {
+    if (window.katex && typeof window.katex.renderToString === 'function') {
+      try {
+        return window.katex.renderToString(tex, {
+          displayMode,
+          throwOnError: false,
+        });
+      } catch (e) {
+        return `<code>${escapeHtml(tex)}</code>`;
+      }
+    }
+    return `<code>${escapeHtml(tex)}</code>`;
+  }
+
+  function renderTextWithInlineLatex(text) {
+    return String(text || '').replace(/\$([^$]+)\$/g, (_, math) => renderLatexFormula(math, false));
+  }
+
+  function setupStatTableLatexTooltips() {
+    const tooltip = document.getElementById('statLatexTooltip');
+    if (!tooltip) return;
+
+    function positionTooltip(e) {
+      const pad = 14;
+      const tw = tooltip.offsetWidth || 350;
+      const th = tooltip.offsetHeight || 150;
+      let left = e.clientX - tw - 16;
+      if (left < pad) {
+        left = Math.min(window.innerWidth - tw - pad, e.clientX + 18);
+      }
+      let top = e.clientY - th / 2;
+      top = Math.max(pad, Math.min(window.innerHeight - th - pad, top));
+      tooltip.style.left = `${Math.round(left)}px`;
+      tooltip.style.top = `${Math.round(top)}px`;
+    }
+
+    document.addEventListener('mouseover', (e) => {
+      const row = e.target.closest('tr[data-stat-key]');
+      if (!row) return;
+      const key = row.getAttribute('data-stat-key');
+      const info = STAT_LATEX_EXPLANATIONS[key];
+      if (!info) return;
+
+      tooltip.innerHTML = `
+        <div class="stat-latex-header">
+          <span>${escapeHtml(info.title)}</span>
+          <span class="stat-symbol-pill">${renderLatexFormula(info.symbol, false)}</span>
+        </div>
+        <div class="stat-latex-formula-box">
+          ${renderLatexFormula(info.formula, true)}
+        </div>
+        <div class="stat-latex-desc">
+          ${renderTextWithInlineLatex(info.desc)}
+        </div>
+      `;
+      tooltip.classList.add('visible');
+      positionTooltip(e);
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (!tooltip.classList.contains('visible')) return;
+      const row = e.target.closest('tr[data-stat-key]');
+      if (!row) {
+        tooltip.classList.remove('visible');
+        return;
+      }
+      positionTooltip(e);
+    });
+
+    document.addEventListener('mouseout', (e) => {
+      const row = e.target.closest('tr[data-stat-key]');
+      if (row && !row.contains(e.relatedTarget)) {
+        tooltip.classList.remove('visible');
+      }
+    });
+  }
+
+  // ============================================================================
   // MODERN EDTECH / FINTECH CANVAS CHART ENGINE
   // ============================================================================
   function drawRoundedTopRect(ctx, x, y, w, h, r) {
@@ -1244,7 +1400,7 @@
     const bins = stats.bins;
     const numBins = bins.length;
     const slotW = plotW / numBins;
-    const barW = Math.max(6, Math.min(34, slotW * 0.68));
+    const barW = Math.max(4, Math.min(34, slotW * 0.68));
 
     if (!customDims) state.chartBarRects = [];
 
@@ -1275,7 +1431,7 @@
       }
 
       if (barH > 0.5) {
-        drawRoundedTopRect(ctx, x, y, barW, barH, 6);
+        drawRoundedTopRect(ctx, x, y, barW, barH, numBins >= 45 ? 3 : 6);
         if (isSelected) {
           ctx.strokeStyle = '#ee642c';
           ctx.lineWidth = 2;
@@ -1302,20 +1458,30 @@
       // Horizontal Count Badge above bar
       if (localProgress > 0.5 && bin.count > 0) {
         ctx.fillStyle = i === hoverIndex ? '#ee642c' : '#27397c';
-        ctx.font = numBins > 25 ? '700 9.5px Inter, sans-serif' : '700 11px Inter, sans-serif';
+        ctx.font =
+          numBins >= 45
+            ? '700 8px Inter, sans-serif'
+            : numBins > 25
+            ? '700 9.5px Inter, sans-serif'
+            : '700 11px Inter, sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'bottom';
-        ctx.fillText(String(bin.count), centerX, y - 5);
+        ctx.fillText(String(bin.count), centerX, y - 4);
       }
 
       // Clean Angled X-axis label
       ctx.save();
       ctx.translate(centerX, padTop + plotH + 10);
-      ctx.rotate(-Math.PI / 4.2);
+      ctx.rotate(numBins >= 45 ? -Math.PI / 3.1 : -Math.PI / 4.2);
       ctx.textAlign = 'right';
       ctx.textBaseline = 'middle';
       ctx.fillStyle = i === hoverIndex ? '#ee642c' : '#475569';
-      ctx.font = numBins > 25 ? '600 9px Inter, sans-serif' : '600 10.5px Inter, sans-serif';
+      ctx.font =
+        numBins >= 45
+          ? '600 7.5px Inter, sans-serif'
+          : numBins > 25
+          ? '600 9px Inter, sans-serif'
+          : '600 10.5px Inter, sans-serif';
       ctx.fillText(bin.shortLabel, 0, 0);
       ctx.restore();
     }
@@ -1683,53 +1849,65 @@
 
     const rowsConfig = [
       {
+        key: 'sots',
         label: 'Số dự thi',
         render: (st) => `<td class="val-col">${fmtInt(st.count)}</td><td class="val-col">/${fmtInt(st.totalRoster)} ĐK</td>`,
       },
       {
+        key: 'absent',
         label: 'Vắng thi (x)',
         render: (st) =>
           `<td class="val-col text-thpt-purple">${fmtInt(st.absentCount)}</td><td class="val-col text-thpt-purple">${fmtPct(st.absentPct, 2)}</td>`,
       },
       {
+        key: 'dtb',
         label: 'Điểm TB',
         render: (st) => `<td class="val-col text-thpt-red">${fmtFixed(st.mean, 2)}</td><td class="val-col"></td>`,
       },
       {
+        key: 'median',
         label: 'Trung vị',
         render: (st) => `<td class="val-col">${fmtDec(st.median, 2)}</td><td class="val-col"></td>`,
       },
       {
+        key: 'dlc',
         label: 'Độ lệch chuẩn',
         render: (st) => `<td class="val-col text-thpt-red">${fmtFixed(st.stdDev, 2)}</td><td class="val-col"></td>`,
       },
       {
+        key: 'mad',
         label: 'MAD',
         render: (st) => `<td class="val-col">${fmtDec(st.mad, 2)}</td><td class="val-col"></td>`,
       },
       {
+        key: 'lt5',
         label: 'Dưới 5 (< 5.0)',
         render: (st) =>
           `<td class="val-col text-thpt-purple">${fmtInt(st.lt5Count)}</td><td class="val-col text-thpt-purple">${fmtPct(st.lt5Pct, 2)}</td>`,
       },
       {
+        key: 'gte7',
         label: 'Khá giỏi (>= 7.0)',
         render: (st) =>
           `<td class="val-col text-thpt-purple">${fmtInt(st.gte7Count)}</td><td class="val-col text-thpt-purple">${fmtPct(st.gte7Pct, 2)}</td>`,
       },
       {
+        key: 'mode',
         label: 'Mode',
         render: (st) => `<td class="val-col">${fmtDec(st.mode, 2)}</td><td class="val-col"></td>`,
       },
       {
+        key: 'score10',
         label: 'Điểm 10',
         render: (st) => `<td class="val-col text-thpt-red">${fmtInt(st.score10Count)}</td><td class="val-col"></td>`,
       },
       {
+        key: 'score0',
         label: 'Điểm 0',
         render: (st) => `<td class="val-col">${fmtInt(st.score0Count)}</td><td class="val-col"></td>`,
       },
       {
+        key: 'lte1',
         label: 'Điểm <= 1.0',
         render: (st) => `<td class="val-col">${fmtInt(st.lte1Count)}</td><td class="val-col">${fmtPct(st.lte1Pct, 2)}</td>`,
       },
@@ -1737,7 +1915,7 @@
 
     let tbodyHtml = '<tbody>';
     rowsConfig.forEach((rc) => {
-      tbodyHtml += `<tr><td class="metric-col">${escapeHtml(rc.label)}</td>`;
+      tbodyHtml += `<tr data-stat-key="${escapeHtml(rc.key)}" style="cursor:help;"><td class="metric-col">${escapeHtml(rc.label)}</td>`;
       sessionStatsList.forEach((item) => {
         tbodyHtml += rc.render(item.stats);
       });
@@ -2168,31 +2346,41 @@
       .sort((a, b) => a.name.localeCompare(b.name, 'vi'))
       .map((r) => Object.assign({}, r, { rank: null, isAbsent: true }));
 
-    // Assign standard competition rank (1, 2, 2, 4...) to all scored students
+    // Count frequency of each score to detect ties
+    const scoreFreq = new Map();
+    for (let i = 0; i < scored.length; i++) {
+      const key = Math.round(scored[i].score * 1000) / 1000;
+      scoreFreq.set(key, (scoreFreq.get(key) || 0) + 1);
+    }
+
+    // Assign rank based on includeTies ("Đồng hạng"):
+    // - When includeTies = true: shared rank tier by score (1, 1, 2, 3, 3...) + mark tied students
+    // - When includeTies = false: strict sequential individual rank (1, 2, 3, 4, 5...)
     const rankedScored = [];
-    let currentRank = 1;
+    let currentDenseRank = 1;
     for (let i = 0; i < scored.length; i++) {
       if (i > 0 && Math.abs(scored[i].score - scored[i - 1].score) > 1e-9) {
-        currentRank = i + 1;
+        currentDenseRank++;
       }
-      rankedScored.push(Object.assign({}, scored[i], { rank: currentRank, isAbsent: false }));
+      const key = Math.round(scored[i].score * 1000) / 1000;
+      const isTiedScore = (scoreFreq.get(key) || 0) > 1;
+      const assignedRank = includeTies ? currentDenseRank : i + 1;
+      rankedScored.push(
+        Object.assign({}, scored[i], {
+          rank: assignedRank,
+          isTied: Boolean(includeTies && isTiedScore),
+          isAbsent: false,
+        })
+      );
     }
 
     // Apply Top N limit if topN > 0 (and not specifically filtering ABSENT)
     let workingList = [];
     if (topN > 0 && state.studentStatusFilter !== 'ABSENT') {
-      for (let i = 0; i < rankedScored.length; i++) {
-        if (i < topN) {
-          workingList.push(rankedScored[i]);
-        } else if (
-          includeTies &&
-          workingList.length > 0 &&
-          Math.abs(rankedScored[i].score - workingList[workingList.length - 1].score) < 1e-9
-        ) {
-          workingList.push(rankedScored[i]);
-        } else {
-          break;
-        }
+      if (includeTies) {
+        workingList = rankedScored.filter((r) => r.rank <= topN);
+      } else {
+        workingList = rankedScored.slice(0, topN);
       }
     } else {
       workingList = rankedScored.concat(absentList);
@@ -2317,7 +2505,7 @@
             <table class="thpt-rank-table">
               <thead>
                 <tr>
-                  <th style="width:55px;">Hạng</th>
+                  <th style="width:78px;">Hạng</th>
                   <th style="text-align:left;">Học sinh</th>
                   <th style="width:85px;">Khối</th>
                   <th style="width:135px;">Bộ môn</th>
@@ -2335,10 +2523,11 @@
                           const isAbs = item.isAbsent || item.absent || item.score === null;
                           let rankBadge = '-';
                           if (!isAbs && item.rank !== null) {
-                            if (item.rank === 1) rankBadge = `<span class="rank-medal rank-1">1</span>`;
-                            else if (item.rank === 2) rankBadge = `<span class="rank-medal rank-2">2</span>`;
-                            else if (item.rank === 3) rankBadge = `<span class="rank-medal rank-3">3</span>`;
-                            else rankBadge = `<b>${item.rank}</b>`;
+                            const tieTag = item.isTied ? `<span class="tie-rank-tag" title="Đồng hạng">ĐH</span>` : '';
+                            if (item.rank === 1) rankBadge = `<span class="rank-medal rank-1">1</span>${tieTag}`;
+                            else if (item.rank === 2) rankBadge = `<span class="rank-medal rank-2">2</span>${tieTag}`;
+                            else if (item.rank === 3) rankBadge = `<span class="rank-medal rank-3">3</span>${tieTag}`;
+                            else rankBadge = `<b>${item.rank}</b>${tieTag}`;
                           } else {
                             rankBadge = `<span style="color:#ee642c; font-weight:800;">KĐ</span>`;
                           }
@@ -3753,6 +3942,7 @@
       refreshAllUI(false);
     });
     setupMainChartInteractivity();
+    setupStatTableLatexTooltips();
   }
 
   document.addEventListener('DOMContentLoaded', () => {
