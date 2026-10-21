@@ -3,11 +3,15 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Phổ Điểm Thi — Trung Tâm Minh Hoàng</title>
+  <meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex, notranslate" />
+  <meta name="googlebot" content="noindex, nofollow, noarchive, nosnippet, noimageindex" />
+  <meta name="bingbot" content="noindex, nofollow, noarchive, nosnippet" />
+  <meta name="referrer" content="no-referrer" />
+  <title>Phổ Điểm Thi (Nội Bộ) — Trung Tâm Minh Hoàng</title>
   <link rel="icon" type="image/png" href="logo-trang-01.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" />
   <link rel="stylesheet" href="styles.css" />
@@ -15,6 +19,64 @@
   <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
 </head>
 <body>
+
+  <!-- ========================================================================
+       HIGH-SECURITY AUTHENTICATION GATE (Bắt buộc đăng nhập mới xem được web)
+       ======================================================================== -->
+  <div id="authLoginOverlay" class="auth-login-overlay">
+    <div class="auth-login-card">
+      <div class="auth-card-header">
+        <img src="logo-trang-01.png" alt="Minh Hoàng" class="auth-logo-img" />
+        <h2>TRUNG TÂM MINH HOÀNG</h2>
+        <p>Hệ thống Phân tích &amp; Tra cứu Phổ điểm Thi</p>
+      </div>
+
+      <form id="authLoginForm" class="auth-card-body" autocomplete="off">
+        <div class="auth-security-badge">
+          <i class="fa-solid fa-shield-halved"></i>
+          <span>Lưu hành nội bộ • Tối đa 02 thiết bị / tài khoản</span>
+        </div>
+
+        <div id="authErrorBox" class="auth-error-box" style="display: none;"></div>
+
+        <div class="auth-field-group">
+          <label for="authUsernameInput"><i class="fa-solid fa-user-shield"></i> Tài khoản đăng nhập</label>
+          <input
+            type="text"
+            id="authUsernameInput"
+            placeholder="Nhập tên tài khoản..."
+            required
+            autocomplete="username"
+          />
+        </div>
+
+        <div class="auth-field-group">
+          <label for="authPasswordInput"><i class="fa-solid fa-lock"></i> Mật khẩu</label>
+          <div class="auth-password-wrap">
+            <input
+              type="password"
+              id="authPasswordInput"
+              placeholder="Nhập mật khẩu..."
+              required
+              autocomplete="current-password"
+            />
+            <button type="button" id="btnToggleAuthPassword" class="auth-eye-btn" title="Hiện/Ẩn mật khẩu">
+              <i class="fa-regular fa-eye"></i>
+            </button>
+          </div>
+        </div>
+
+        <button type="submit" id="btnSubmitAuthLogin" class="btn btn-primary auth-submit-btn">
+          <i class="fa-solid fa-right-to-bracket"></i>
+          <span>Đăng nhập hệ thống</span>
+        </button>
+
+        <div class="auth-footer-note">
+          <i class="fa-solid fa-phone-volume"></i> Quên mật khẩu thì hãy liên hệ <b>0343763310</b>
+        </div>
+      </form>
+    </div>
+  </div>
 
   <!-- Global Drag & Drop Overlay -->
   <div id="globalDropOverlay" class="global-drop-overlay">
@@ -83,6 +145,21 @@
         </div>
       </div>
     </div>
+
+    <!-- User Account Info & Logout Footer -->
+    <div class="sidebar-user-footer" id="sidebarUserFooter">
+      <div class="sidebar-user-meta">
+        <div class="sidebar-user-avatar" id="authUserAvatar"><i class="fa-solid fa-user-check"></i></div>
+        <div class="sidebar-user-details">
+          <div class="sidebar-user-name" id="authUserDisplayName">Chưa đăng nhập</div>
+          <div class="sidebar-user-role" id="authUserRoleBadge">Đang khóa</div>
+        </div>
+      </div>
+      <button type="button" class="btn-sidebar-logout" id="btnLogoutAuth" title="Đăng xuất tài khoản">
+        <i class="fa-solid fa-power-off"></i>
+        <span>Đăng xuất</span>
+      </button>
+    </div>
   </aside>
 
   <!-- ========================================================================
@@ -103,8 +180,8 @@
           </div>
         </div>
 
-        <!-- Right: Compact Upload Dropzone -->
-        <div class="top-cmd-right">
+        <!-- Right: Compact Upload Dropzone (ADMIN ONLY — hidden for USER) -->
+        <div class="top-cmd-right" id="adminUploadControlWrap" style="display: none;">
           <input type="file" id="fileInputHidden" accept=".csv,.xlsx,.xls" multiple style="display: none;" />
           <div id="dropzoneArea" class="dropzone-pill" title="Kéo thả hoặc bấm để nạp thêm L2.xlsx, L3.xlsx... hoặc file điểm bất kỳ">
             <i class="fa-solid fa-cloud-arrow-up dropzone-pill-icon"></i>
@@ -524,6 +601,7 @@
   <div id="statLatexTooltip" class="stat-latex-tooltip"></div>
   <div id="toastContainer" class="toast-container"></div>
 
+  <script src="accounts.js"></script>
   <script src="sample-data.js"></script>
   <script src="app.js"></script>
 </body>
