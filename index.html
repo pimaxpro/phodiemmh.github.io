@@ -9,8 +9,10 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" />
   <link rel="stylesheet" href="styles.css" />
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
 </head>
 <body>
 
@@ -151,6 +153,7 @@
             <div class="qf-segmented-group">
               <button type="button" class="choice-pill bin-step-pill active" data-step="0.5">0.5đ</button>
               <button type="button" class="choice-pill bin-step-pill" data-step="0.25">0.25đ</button>
+              <button type="button" class="choice-pill bin-step-pill" data-step="0.2">0.2đ</button>
               <button type="button" class="choice-pill bin-step-pill" data-step="1.0">1.0đ</button>
             </div>
 
@@ -188,63 +191,63 @@
           <div>
             <table class="thpt-stats-table" id="thptStatsTable">
               <tbody>
-                <tr>
-                  <td class="stat-name">Số TS dự thi</td>
+                <tr data-stat-key="sots">
+                  <td class="stat-name"><span>Số TS dự thi</span><span class="stat-help-icon">?</span></td>
                   <td class="stat-val" id="statSoTS">0</td>
                   <td class="stat-pct" id="statSoTSNote"></td>
                 </tr>
-                <tr>
-                  <td class="stat-name">Vắng thi (x)</td>
+                <tr data-stat-key="absent">
+                  <td class="stat-name"><span>Vắng thi (x)</span><span class="stat-help-icon">?</span></td>
                   <td class="stat-val text-thpt-purple" id="statAbsentCount">0</td>
                   <td class="stat-pct text-thpt-purple" id="statAbsentPct">0.00 %</td>
                 </tr>
-                <tr>
-                  <td class="stat-name">ĐTB</td>
+                <tr data-stat-key="dtb">
+                  <td class="stat-name"><span>ĐTB</span><span class="stat-help-icon">?</span></td>
                   <td class="stat-val text-thpt-red" id="statDTB">0.00</td>
                   <td class="stat-pct"></td>
                 </tr>
-                <tr>
-                  <td class="stat-name">Trung vị</td>
+                <tr data-stat-key="median">
+                  <td class="stat-name"><span>Trung vị</span><span class="stat-help-icon">?</span></td>
                   <td class="stat-val" id="statMedian">0.00</td>
                   <td class="stat-pct"></td>
                 </tr>
-                <tr>
-                  <td class="stat-name">ĐLC</td>
+                <tr data-stat-key="dlc">
+                  <td class="stat-name"><span>ĐLC</span><span class="stat-help-icon">?</span></td>
                   <td class="stat-val text-thpt-red" id="statDLC">0.00</td>
                   <td class="stat-pct"></td>
                 </tr>
-                <tr>
-                  <td class="stat-name">MAD</td>
+                <tr data-stat-key="mad">
+                  <td class="stat-name"><span>MAD</span><span class="stat-help-icon">?</span></td>
                   <td class="stat-val" id="statMAD">0.00</td>
                   <td class="stat-pct"></td>
                 </tr>
-                <tr>
-                  <td class="stat-name">&lt;5</td>
+                <tr data-stat-key="lt5">
+                  <td class="stat-name"><span>&lt;5</span><span class="stat-help-icon">?</span></td>
                   <td class="stat-val" id="statLt5Count">0</td>
                   <td class="stat-pct" id="statLt5Pct">0.00 %</td>
                 </tr>
-                <tr>
-                  <td class="stat-name">&gt; = 7</td>
+                <tr data-stat-key="gte7">
+                  <td class="stat-name"><span>&gt; = 7</span><span class="stat-help-icon">?</span></td>
                   <td class="stat-val" id="statGte7Count">0</td>
                   <td class="stat-pct" id="statGte7Pct">0.00 %</td>
                 </tr>
-                <tr>
-                  <td class="stat-name">Mode</td>
+                <tr data-stat-key="mode">
+                  <td class="stat-name"><span>Mode</span><span class="stat-help-icon">?</span></td>
                   <td class="stat-val" id="statMode">0.0</td>
                   <td class="stat-pct" id="statModeCount"></td>
                 </tr>
-                <tr>
-                  <td class="stat-name">Điểm 10</td>
+                <tr data-stat-key="score10">
+                  <td class="stat-name"><span>Điểm 10</span><span class="stat-help-icon">?</span></td>
                   <td class="stat-val text-thpt-red" id="statScore10">0</td>
                   <td class="stat-pct" id="statScore10Pct"></td>
                 </tr>
-                <tr>
-                  <td class="stat-name">Điểm 0</td>
+                <tr data-stat-key="score0">
+                  <td class="stat-name"><span>Điểm 0</span><span class="stat-help-icon">?</span></td>
                   <td class="stat-val" id="statScore0">0</td>
                   <td class="stat-pct"></td>
                 </tr>
-                <tr>
-                  <td class="stat-name">&lt; = 1</td>
+                <tr data-stat-key="lte1">
+                  <td class="stat-name"><span>&lt; = 1</span><span class="stat-help-icon">?</span></td>
                   <td class="stat-val" id="statLte1Count">0</td>
                   <td class="stat-pct" id="statLte1Pct">0.00 %</td>
                 </tr>
@@ -518,6 +521,7 @@
     </div>
   </div>
 
+  <div id="statLatexTooltip" class="stat-latex-tooltip"></div>
   <div id="toastContainer" class="toast-container"></div>
 
   <script src="sample-data.js"></script>
