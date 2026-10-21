@@ -49,6 +49,27 @@ window.ACCOUNT_CONFIG = {
       displayName: 'Minh Tuấn (Admin)',
       subjects: ['ALL'],
     },
+    {
+      username: 'dinhthutrang',
+      password: '123',
+      role: 'ADMIN',
+      displayName: 'Đinh Thu Trang (Admin)',
+      subjects: ['ALL'],
+    },
+    {
+      username: 'nguyenminhhoang',
+      password: '123',
+      role: 'ADMIN',
+      displayName: 'Nguyễn Minh Hoàng (Admin)',
+      subjects: ['ALL'],
+    },
+    {
+      username: 'tranminhvu',
+      password: '123',
+      role: 'ADMIN',
+      displayName: 'Trần Minh Vũ (Admin)',
+      subjects: ['ALL'],
+    },
 
     // ========================================================================
     // 2. CÁC TÀI KHOẢN USER (CHỈ XEM BỘ MÔN MÌNH QUẢN LÝ, KHÔNG KÉO THẢ FILE)
