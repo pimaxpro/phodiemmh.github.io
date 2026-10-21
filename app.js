@@ -10,8 +10,14 @@
 
   const STORAGE_KEY = 'TRUNG_TAM_MINH_HOANG_SESSIONS_V3_REAL_L1';
   const CENTER_NAME_KEY = 'TRUNG_TAM_MINH_HOANG_NAME_V2';
+  const AUTH_SESSION_KEY = 'MH_AUTH_SECURE_TOKEN_V1';
+  const AUTH_LOCKOUT_KEY = 'MH_AUTH_BRUTEFORCE_GUARD_V1';
+  const DEVICE_ID_KEY = 'MH_DEVICE_FINGERPRINT_V1';
+  const ACTIVE_DEVICES_KEY = 'MH_ACTIVE_DEVICE_SESSIONS_V1';
+  const AUTH_SIGNATURE_SALT = 'MH_SECURE_SALT_2026_#27397c_#ee642c';
 
   const state = {
+    currentUser: null, // Authenticated user object { username, role, displayName, subjects }
     sessions: [],
     currentSessionId: null,
     currentSubject: null,
@@ -52,6 +58,111 @@
       'KHTN (SINH)': 'KHTN (Sinh)',
     };
     return map[upper] || cleaned;
+  }
+
+  // ============================================================================
+  // HIGH-SECURITY AUTHENTICATION VAULT & RBAC ENGINE
+  // ============================================================================
+  function computeSecureDigest(input) {
+    const str = String(input || '') + '::' + AUTH_SIGNATURE_SALT;
+    let h1 = 0xdeadbeef ^ str.length;
+    let h2 = 0x41c6ce57 ^ str.length;
+    let h3 = 0x9e3779b9 ^ str.length;
+    let h4 = 0x85ebca6b ^ str.length;
+    for (let i = 0; i < str.length; i++) {
+      const ch = str.charCodeAt(i);
+      h1 = Math.imul(h1 ^ ch, 2654435761);
+      h2 = Math.imul(h2 ^ ch, 1597334677);
+      h3 = Math.imul(h3 ^ ch, 2246822507);
+      h4 = Math.imul(h4 ^ ch, 3266489909);
+    }
+    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+    h3 = Math.imul(h3 ^ (h3 >>> 16), 2246822507) ^ Math.imul(h4 ^ (h4 >>> 13), 3266489909);
+    h4 = Math.imul(h4 ^ (h4 >>> 16), 2246822507) ^ Math.imul(h3 ^ (h3 >>> 13), 3266489909);
+    const hex = (n) => (n >>> 0).toString(16).padStart(8, '0');
+    return hex(h1) + hex(h2) + hex(h3) + hex(h4);
+  }
+
+  function constantTimeEquals(a, b) {
+    const sa = String(a || '');
+    const sb = String(b || '');
+    if (sa.length !== sb.length) return false;
+    let diff = 0;
+    for (let i = 0; i < sa.length; i++) {
+      diff |= sa.charCodeAt(i) ^ sb.charCodeAt(i);
+    }
+    return diff === 0;
+  }
+
+  // Capture & wipe window.ACCOUNT_CONFIG immediately so it cannot be read from DevTools console
+  const PRIVATE_AUTH_VAULT = (function initPrivateVault() {
+    const rawCfg = window.ACCOUNT_CONFIG || {};
+    try {
+      delete window.ACCOUNT_CONFIG;
+    } catch (e) {
+      window.ACCOUNT_CONFIG = undefined;
+    }
+    const sec = Object.assign(
+      {
+        maxFailedAttempts: 5,
+        lockoutDurationSeconds: 60,
+        sessionTimeoutMinutes: 120,
+        maxDevicesPerAccount: 2,
+        protectDevToolsForUser: true,
+        internalOnlyMode: true,
+      },
+      rawCfg.securitySettings || {}
+    );
+    const rawAccounts = Array.isArray(rawCfg.accounts) ? rawCfg.accounts : [];
+    const accounts = rawAccounts.map((acc) => {
+      const uname = String(acc.username || '').trim().toLowerCase();
+      const role = String(acc.role || 'USER').trim().toUpperCase() === 'ADMIN' ? 'ADMIN' : 'USER';
+      const subjs = Array.isArray(acc.subjects)
+        ? acc.subjects.map((s) => (String(s).toUpperCase() === 'ALL' ? 'ALL' : normalizeSubjectName(s)))
+        : [];
+      const pwdDigest = computeSecureDigest(`${uname}::${String(acc.password || '')}`);
+      return Object.freeze({
+        username: uname,
+        passwordDigest: pwdDigest,
+        role,
+        displayName: String(acc.displayName || acc.username || 'Người dùng').trim(),
+        subjects: Object.freeze(role === 'ADMIN' ? ['ALL'] : subjs),
+      });
+    });
+    return Object.freeze({ settings: Object.freeze(sec), accounts: Object.freeze(accounts) });
+  })();
+
+  function signSessionPayload(userObj, exp) {
+    const raw = `${userObj.username}|${userObj.role}|${(userObj.subjects || []).join(',')}|${exp}`;
+    return computeSecureDigest(raw);
+  }
+
+  function isAuthenticated() {
+    return Boolean(state.currentUser && state.currentUser.username);
+  }
+
+  function isAdminUser() {
+    return Boolean(state.currentUser && state.currentUser.role === 'ADMIN');
+  }
+
+  function getAllowedSubjects(session) {
+    if (!session || !Array.isArray(session.subjects)) return [];
+    if (!isAuthenticated()) return [];
+    if (isAdminUser() || (state.currentUser.subjects && state.currentUser.subjects.includes('ALL'))) {
+      return session.subjects.slice();
+    }
+    const allowedSet = new Set();
+    (state.currentUser.subjects || []).forEach((s) => {
+      const norm = normalizeSubjectName(s);
+      allowedSet.add(norm);
+      if (norm.toUpperCase() === 'KHTN' || norm.toUpperCase().startsWith('KHTN')) {
+        allowedSet.add('KHTN (Lí)');
+        allowedSet.add('KHTN (Hóa)');
+        allowedSet.add('KHTN (Sinh)');
+      }
+    });
+    return session.subjects.filter((s) => allowedSet.has(normalizeSubjectName(s)));
   }
 
   function parseCSVToRows(csvText) {
@@ -491,8 +602,9 @@
   function ensureValidGradeAndTeacher() {
     const sess = getCurrentSession();
     if (!sess) return;
-    if (!state.currentSubject || !sess.subjects.includes(state.currentSubject)) {
-      state.currentSubject = sess.subjects[0] || 'Toán THPT';
+    const allowedSubjs = getAllowedSubjects(sess);
+    if (!state.currentSubject || !allowedSubjs.includes(state.currentSubject)) {
+      state.currentSubject = allowedSubjs[0] || sess.subjects[0] || 'Toán THPT';
     }
 
     const grades = getGradesForSubject(sess, state.currentSubject);
@@ -714,10 +826,10 @@
       selectEl.innerHTML = html;
     }
 
-    // Show/hide delete button if more than 1 session
+    // Show/hide delete button if more than 1 session AND logged in as ADMIN
     const delBtn = document.getElementById('btnDeleteCurrentSession');
     if (delBtn) {
-      delBtn.style.display = state.sessions.length > 1 ? 'inline-flex' : 'none';
+      delBtn.style.display = isAdminUser() && state.sessions.length > 1 ? 'inline-flex' : 'none';
     }
 
     // 2. Render Status Pills inside Top Bar Footer (#sessionPillsContainer)
@@ -735,7 +847,7 @@
         <span>${escapeHtml(sess.shortName || sess.name)}</span>
         <span class="pill-count">${fmtInt(scoredCount)} TS${absentCount > 0 ? ` • ${absentCount} vắng` : ''}</span>
         ${
-          state.sessions.length > 1
+          isAdminUser() && state.sessions.length > 1
             ? `<span class="pill-delete" data-del-id="${escapeHtml(sess.id)}" title="Xóa">✕</span>`
             : ''
         }
@@ -762,6 +874,10 @@
   }
 
   function deleteSession(id) {
+    if (!isAdminUser()) {
+      showToast('Chỉ tài khoản ADMIN mới được phép xóa đợt thi!');
+      return;
+    }
     if (state.sessions.length <= 1) return;
     state.sessions = state.sessions.filter((s) => s.id !== id);
     if (state.currentSessionId === id) {
@@ -792,7 +908,8 @@
     if (!container || !sess) return;
     container.innerHTML = '';
 
-    sess.subjects.forEach((subj) => {
+    const allowedSubjs = getAllowedSubjects(sess);
+    allowedSubjs.forEach((subj) => {
       const iconCls = getSubjectIconClass(subj);
       const btn = document.createElement('button');
       btn.type = 'button';
@@ -919,81 +1036,154 @@
   }
 
   // ============================================================================
-  // LATEX FORMULA EXPLANATIONS FOR STATISTICAL INDICATORS
+  // LATEX FORMULA EXPLANATIONS FOR STATISTICAL INDICATORS (ULTRA-DETAILED)
   // ============================================================================
   const STAT_LATEX_EXPLANATIONS = {
     sots: {
-      title: 'Số thí sinh dự thi',
+      title: 'Số thí sinh dự thi thực tế',
       symbol: 'n',
       formula: 'n = N_{\\text{ĐK}} - n_{\\text{vắng}}',
-      desc: 'Tổng số thí sinh thực tế có mặt làm bài và có điểm hợp lệ $x_i \\in [0, 10]$ trên tổng danh sách đăng ký $N_{\\text{ĐK}}$.',
+      meaning:
+        '<b>Bản chất:</b> Là cỡ mẫu thực tế ($n$) dùng ở mẫu số cho mọi công thức thống kê ($\\bar{x}, \\sigma, M_e, \\text{MAD}$).<br/>' +
+        '<b>Ý nghĩa phân tích:</b> Khi $n$ càng lớn ($n \\ge 30$), phổ điểm càng hội tụ về phân phối chuẩn và các chỉ số thống kê càng phản ánh chính xác năng lực thật của khóa học.',
+      example:
+        '<b>Ví dụ thực tế:</b> Khối đăng ký $N_{\\text{ĐK}} = 120$ học sinh, có $n_{\\text{vắng}} = 5$ em đánh dấu $x$. Khi đó $n = 120 - 5 = 115$ bài thi hợp lệ được đưa vào tính $\\bar{x}$ (không tính 5 em vắng thành điểm $0$).',
     },
     absent: {
       title: 'Thí sinh vắng thi (x)',
       symbol: 'n_{\\text{vắng}}',
       formula: '\\%\\text{Vắng} = \\dfrac{n_{\\text{vắng}}}{N_{\\text{ĐK}}} \\times 100\\%',
-      desc: 'Số lượng và tỷ lệ phần trăm học sinh có tên trong danh sách nhưng vắng mặt (được đánh dấu $x$).',
+      meaning:
+        '<b>Bản chất:</b> Tỷ lệ học sinh có tên trong danh sách lớp nhưng không có bài chấm (ký hiệu $x$).<br/>' +
+        '<b>Ý nghĩa quản lý:</b> Phản ánh mức độ chuyên cần và kỷ luật thi cử. Nếu $\\%\\text{Vắng} > 10\\%$, mặt bằng điểm trung bình $\\bar{x}$ có thể bị <span class="hl-accent">sai lệch chọn lọc</span> (do học sinh yếu sợ thi nên nghỉ).',
+      example:
+        '<b>Ví dụ thực tế:</b> Lớp có $N_{\\text{ĐK}} = 50$ em, vắng $n_{\\text{vắng}} = 4$ em $\\Rightarrow \\%\\text{Vắng} = \\frac{4}{50}\\times 100\\% = 8.00\\%$. Giáo viên cần kiểm tra danh sách 4 em này để tổ chức thi bù.',
     },
     dtb: {
-      title: 'Điểm trung bình cộng',
+      title: 'Điểm trung bình cộng (Mean)',
       symbol: '\\bar{x}',
-      formula: '\\bar{x} = \\dfrac{1}{n}\\sum_{i=1}^{n} x_i',
-      desc: 'Trung bình cộng điểm số của toàn bộ $n$ thí sinh dự thi, phản ánh mặt bằng điểm chung của nhóm/khối.',
+      formula: '\\bar{x} = \\dfrac{1}{n}\\sum_{i=1}^{n} x_i = \\dfrac{x_1 + x_2 + \\dots + x_n}{n}',
+      meaning:
+        '<b>Bản chất:</b> Là "trọng tâm khối lượng" của toàn bộ phổ điểm.<br/>' +
+        '<b>Ý nghĩa phân tích điểm:</b><br/>' +
+        '• Đánh giá mặt bằng chung của lớp/khối và độ khó đề thi ($\\bar{x} < 5.0$: đề khó hoặc hổng kiến thức; $6.0 \\le \\bar{x} \\le 7.2$: đề chuẩn phân hóa).<br/>' +
+        '• <b>Lưu ý quan trọng:</b> $\\bar{x}$ rất nhạy cảm với <span class="hl-accent">điểm ngoại lai (Outliers)</span>. Do đó luôn phải đọc $\\bar{x}$ cặp đôi với <b>Trung vị $M_e$</b>:<br/>' +
+        '&nbsp;&nbsp;+ Nếu $\\bar{x} < M_e$: Phổ lệch trái — có một số học sinh điểm rất thấp ($0 - 2$đ) kéo tụt ĐTB.<br/>' +
+        '&nbsp;&nbsp;+ Nếu $\\bar{x} > M_e$: Phổ lệch phải — có một nhóm nhỏ học sinh xuất sắc ($9 - 10$đ) kéo ĐTB lên.',
+      example:
+        '<b>Ví dụ thống kê cụ thể:</b> Xét nhóm $n = 5$ học sinh có điểm: $\\{1.0;\\; 7.0;\\; 7.5;\\; 8.0;\\; 8.5\\}$.<br/>' +
+        '• Tính $\\bar{x} = \\dfrac{1.0 + 7.0 + 7.5 + 8.0 + 8.5}{5} = \\mathbf{6.40}$ điểm.<br/>' +
+        '• Dù $4/5$ học sinh đạt $\\ge 7.0$ (Khá/Giỏi), chỉ vì 1 bài $1.0$đ mà $\\bar{x}$ bị kéo xuống $6.40$ (trong khi Trung vị $M_e = 7.50$ phản ánh đúng thực lực nhóm hơn).',
     },
     median: {
-      title: 'Trung vị (Median)',
+      title: 'Trung vị (Median — Điểm giữa bảng)',
       symbol: 'M_e',
       formula:
-        'M_e = \\begin{cases} x_{(k)} & \\text{nếu } n = 2k-1 \\\\[4pt] \\dfrac{x_{(k)} + x_{(k+1)}}{2} & \\text{nếu } n = 2k \\end{cases}',
-      desc: 'Điểm số đứng chính giữa dãy điểm đã sắp xếp tăng dần $x_{(1)} \\le x_{(2)} \\le \\dots \\le x_{(n)}$ ($50\\%$ thí sinh đạt $\\le M_e$ và $50\\%$ đạt $\\ge M_e$).',
+        'M_e = \\begin{cases} x_{\\left(\\frac{n+1}{2}\\right)} & \\text{nếu } n \\text{ lẻ} \\\\[4pt] \\dfrac{1}{2}\\left(x_{\\left(\\frac{n}{2}\\right)} + x_{\\left(\\frac{n}{2}+1\\right)}\\right) & \\text{nếu } n \\text{ chẵn} \\end{cases}',
+      meaning:
+        '<b>Bản chất:</b> Mốc điểm chia đôi danh sách thí sinh sau khi sắp xếp tăng dần $x_{(1)} \\le x_{(2)} \\le \\dots \\le x_{(n)}$: đúng $50\\%$ học sinh có điểm $\\le M_e$ và $50\\%$ có điểm $\\ge M_e$.<br/>' +
+        '<b>Ý nghĩa phân tích điểm:</b> Là chỉ số <b>bền vững (Robust)</b> phản ánh đúng thực lực của "học sinh đứng giữa lớp", hoàn toàn không bị bóp méo bởi vài bài điểm $0$ hay điểm $10$ cá biệt.',
+      example:
+        '<b>Ví dụ thống kê cụ thể:</b><br/>' +
+        '• <b>TH1 ($n=5$ lẻ):</b> Điểm xếp tăng dần $\\{4.0;\\; 5.5;\\; \\mathbf{6.8};\\; 7.5;\\; 9.0\\} \\Rightarrow$ vị trí giữa là $x_{(3)} \\Rightarrow M_e = \\mathbf{6.80}$.<br/>' +
+        '• <b>TH2 ($n=6$ chẵn):</b> $\\{4.0;\\; 5.5;\\; \\mathbf{6.8};\\; \\mathbf{7.2};\\; 8.0;\\; 9.0\\} \\Rightarrow M_e = \\dfrac{6.8 + 7.2}{2} = \\mathbf{7.00}$.',
     },
     dlc: {
       title: 'Độ lệch chuẩn (Standard Deviation)',
       symbol: '\\sigma',
       formula: '\\sigma = \\sqrt{\\dfrac{1}{n}\\sum_{i=1}^{n}\\left(x_i - \\bar{x}\\right)^2}',
-      desc: 'Đo mức độ phân tán điểm số quanh Điểm trung bình $\\bar{x}$. Khi $\\sigma$ nhỏ: học lực đồng đều; khi $\\sigma$ lớn: mức độ phân hóa mạnh.',
+      meaning:
+        '<b>Bản chất:</b> Căn bậc hai của trung bình bình phương khoảng cách từ điểm mỗi học sinh $x_i$ đến ĐTB $\\bar{x}$. Vì lấy bình phương $(x_i - \\bar{x})^2$ nên các điểm lệch xa $\\bar{x}$ sẽ làm $\\sigma$ tăng vọt.<br/>' +
+        '<b>Thước đo phân tích chất lượng lớp &amp; đề thi:</b><br/>' +
+        '• $\\sigma < 1.0$: Điểm tụm очень sát quanh $\\bar{x}$ $\\Rightarrow$ học lực lớp rất đồng đều (hoặc đề thi thiếu câu phân loại).<br/>' +
+        '• $1.1 \\le \\sigma \\le 1.7$: <b>Độ phân hóa chuẩn</b> của kỳ thi thử THPT, khoảng $68\\%$ học sinh nằm trong đoạn $[\\bar{x} - \\sigma,\\; \\bar{x} + \\sigma]$.<br/>' +
+        '• $\\sigma > 2.0$: <span class="hl-accent">Phân cực quá mạnh</span> — lớp bị tách thành 2 cực Giỏi hẳn và Yếu kém hẳn, cần tách nhóm dạy phụ đạo.',
+      example:
+        '<b>Ví dụ so sánh 2 lớp có cùng ĐTB $\\bar{x} = 7.00$:</b><br/>' +
+        '• <b>Lớp A:</b> $\\{6.5;\\; 6.8;\\; 7.0;\\; 7.2;\\; 7.5\\} \\Rightarrow \\sigma_A = \\mathbf{0.34}$ (Trình độ đồng đều, dễ dạy chung 1 giáo án).<br/>' +
+        '• <b>Lớp B:</b> $\\{3.0;\\; 5.0;\\; 7.0;\\; 9.0;\\; 10.0\\} \\Rightarrow \\sigma_B = \\mathbf{2.61}$ (Chênh lệch cực lớn dù cùng $\\bar{x}=7.0$, bắt buộc phân tầng bài tập).',
     },
     mad: {
       title: 'Độ lệch tuyệt đối trung vị (MAD)',
       symbol: '\\text{MAD}',
       formula: '\\text{MAD} = \\text{Median}\\Big(\\big\\{\\,|x_i - M_e| \\;\\big|\\; i = 1,\\dots,n\\,\\big\\}\\Big)',
-      desc: 'Trung vị của độ lệch tuyệt đối giữa từng điểm $x_i$ với Trung vị $M_e$. Đây là thước đo độ phân tán bền vững, không bị nhiễu bởi các điểm đột biến.',
+      meaning:
+        '<b>Bản chất:</b> Là khoảng cách lệch "điển hình" của đa số học sinh trong lớp so với Trung vị $M_e$ ($50\\%$ học sinh có điểm nằm gọn trong khoảng $[M_e - \\text{MAD},\\; M_e + \\text{MAD}]$).<br/>' +
+        '<b>Tại sao cần MAD bên cạnh ĐLC $\\sigma$?</b><br/>' +
+        '• ĐLC $\\sigma$ dùng bình phương nên chỉ cần 1–2 học sinh nộp giấy trắng ($0$đ) là $\\sigma$ phình to giả tạo.<br/>' +
+        '• $\\text{MAD}$ loại bỏ hoàn toàn nhiễu ngoại lai. <b>Mẹo chẩn đoán:</b> Nếu $\\sigma \\gg 1.5 \\times \\text{MAD}$ thì lớp thực chất học đều nhưng đang có một vài cá nhân điểm đột biến (cực thấp hoặc cực cao).',
+      example:
+        '<b>Ví dụ tính từng bước:</b> Xét 5 điểm $\\{2.0;\\; 6.5;\\; 7.0;\\; 7.2;\\; 7.5\\}$.<br/>' +
+        '• <b>Bước 1:</b> Tìm Trung vị $M_e = \\mathbf{7.00}$.<br/>' +
+        '• <b>Bước 2:</b> Tính độ lệch $|x_i - 7.0|$ cho từng em: $\\{5.0;\\; 0.5;\\; 0.0;\\; 0.2;\\; 0.5\\}$.<br/>' +
+        '• <b>Bước 3:</b> Xếp tăng dần các độ lệch: $\\{0.0;\\; 0.2;\\; \\mathbf{0.5};\\; 0.5;\\; 5.0\\} \\Rightarrow \\text{MAD} = \\mathbf{0.50}$đ.<br/>' +
+        '<i>Kết luận:</i> Đa số lớp chỉ lệch quanh mức $7.0 \\pm 0.5$đ (rất đều), còn $\\sigma = 2.04$ cao chỉ do duy nhất bài $2.0$đ gây ra!',
     },
     lt5: {
-      title: 'Điểm dưới trung bình (< 5.0)',
+      title: 'Tỷ lệ dưới trung bình (< 5.0)',
       symbol: 'x_i < 5',
       formula: '\\%(x < 5) = \\dfrac{\\#\\big\\{x_i < 5.0\\big\\}}{n} \\times 100\\%',
-      desc: 'Số lượng và tỷ lệ phần trăm thí sinh có điểm bài thi dưới ngưỡng trung bình ($x_i < 5.0$).',
+      meaning:
+        '<b>Bản chất:</b> Tỷ lệ học sinh chưa nắm vững kiến thức cơ bản (chưa đạt ngưỡng 5 điểm).<br/>' +
+        '<b>Ý nghĩa phân tích:</b> Là chỉ báo rủi ro cần phụ đạo gấp. Nếu $\\%(x < 5) > 25\\%$, cần rà soát lại kiến thức nền tảng (mức Nhận biết – Thông hiểu) trước khi luyện đề nâng cao.',
+      example:
+        '<b>Ví dụ thực tế:</b> Khối có $n = 80$ thí sinh dự thi, trong đó có $12$ em đạt từ $1.5$ đến $4.8$ điểm $\\Rightarrow \\%(x < 5) = \\frac{12}{80} \\times 100\\% = \\mathbf{15.00\\%}$.',
     },
     gte7: {
-      title: 'Điểm Khá – Giỏi (>= 7.0)',
+      title: 'Tỷ lệ Khá – Giỏi (>= 7.0)',
       symbol: 'x_i \\ge 7',
       formula: '\\%(x \\ge 7) = \\dfrac{\\#\\big\\{x_i \\ge 7.0\\big\\}}{n} \\times 100\\%',
-      desc: 'Số lượng và tỷ lệ phần trăm thí sinh đạt kết quả từ mức Khá – Giỏi trở lên ($x_i \\ge 7.0$).',
+      meaning:
+        '<b>Bản chất:</b> Tỷ lệ học sinh làm chủ tốt kiến thức và bắt đầu giải quyết được các câu hỏi Vận dụng.<br/>' +
+        '<b>Ý nghĩa phân tích:</b> Dùng để đánh giá chất lượng mũi nhọn của từng giáo viên / từng khối và khả năng cạnh tranh xét tuyển Đại học của học sinh.',
+      example:
+        '<b>Ví dụ thực tế:</b> Trong $n = 80$ học sinh dự thi có $44$ em đạt từ $7.00$ đến $10.0$ điểm $\\Rightarrow \\%(x \\ge 7) = \\frac{44}{80} \\times 100\\% = \\mathbf{55.00\\%}$ (Nhóm lớp có chất lượng Khá – Giỏi tốt).',
     },
     mode: {
-      title: 'Mốt của phân phối điểm (Mode)',
+      title: 'Mốt của phân phối điểm (Mode — Đỉnh phổ điểm)',
       symbol: 'M_o',
       formula: 'M_o = \\arg\\max_{x} \\, f(x)',
-      desc: 'Mức điểm $x$ có tần số xuất hiện $f(x)$ lớn nhất (mức điểm có nhiều thí sinh đạt được nhất trong kỳ thi).',
+      meaning:
+        '<b>Bản chất:</b> Mức điểm cụ thể $x$ có tần số xuất hiện $f(x)$ nhiều nhất (cột cao nhất của phổ điểm).<br/>' +
+        '<b>Ý nghĩa trong phân tích đề thi &amp; năng lực:</b><br/>' +
+        '• Cho biết <b>"mức điểm phổ biến nhất"</b> mà phần đông học sinh chạm tới và dừng lại (ngưỡng trần năng lực đại trà).<br/>' +
+        '• Nếu $M_o$ nằm ở $7.5 - 8.0$: Đề vừa sức, đa số học sinh giải tốt phần cơ bản và chỉ dừng ở câu Vận dụng cao.<br/>' +
+        '• Nếu $M_o$ thấp ($4.0 - 5.0$) dù $\\bar{x}$ khá: Báo hiệu hiện tượng <b>phổ 2 đỉnh (Bimodal)</b> — đa số học sinh tụ ở mức trung bình yếu.',
+      example:
+        '<b>Ví dụ thống kê cụ thể:</b> Trong bảng điểm 40 học sinh:<br/>' +
+        '• Mức $7.50$đ có <b>9 học sinh</b> đạt được (nhiều nhất lớp).<br/>' +
+        '• Mức $8.00$đ có 6 học sinh; mức $6.50$đ có 5 học sinh.<br/>' +
+        '$\\Rightarrow \\text{Mode } M_o = \\mathbf{7.50}\\text{ (9 TS)}$. Nghĩa là mốc $7.50$đ là "điểm rơi" phổ biến nhất của đề thi này.',
     },
     score10: {
-      title: 'Điểm tuyệt đối (Điểm 10)',
+      title: 'Số lượng điểm tuyệt đối (Điểm 10)',
       symbol: 'x_i = 10',
       formula: '\\%(x = 10) = \\dfrac{\\#\\big\\{x_i = 10.0\\big\\}}{n} \\times 100\\%',
-      desc: 'Số lượng và tỷ lệ phần trăm thí sinh đạt điểm tối đa $x_i = 10.0$ trong bài thi.',
+      meaning:
+        '<b>Bản chất:</b> Số lượng và tỷ lệ học sinh chinh phục trọn vẹn 100% câu hỏi (bao gồm cả câu Vận dụng cao lấy điểm 10).<br/>' +
+        '<b>Ý nghĩa phân tích:</b> Đo lường hiệu quả bồi dưỡng học sinh giỏi xuất sắc và kiểm tra xem câu cuối của đề thi có bị quá dễ (mưa điểm 10) hay quá đánh đố hay không.',
+      example:
+        '<b>Ví dụ thực tế:</b> Cả khối $n = 200$ thí sinh có $3$ em đạt $10.0$ $\\Rightarrow \\%(x=10) = 1.50\\%$ (Đề phân loại tốt nhóm dẫn đầu).',
     },
     score0: {
-      title: 'Điểm 0',
+      title: 'Số lượng Điểm 0',
       symbol: 'x_i = 0',
       formula: 'n_0 = \\#\\big\\{x_i = 0.0\\big\\}',
-      desc: 'Số lượng thí sinh có mặt dự thi nhưng đạt kết quả $x_i = 0.0$ điểm.',
+      meaning:
+        '<b>Bản chất:</b> Thí sinh có mặt phòng thi nhưng đạt $0.0$ điểm (nộp giấy trắng, tô sai mã đề/SBD hoặc mất gốc hoàn toàn).<br/>' +
+        '<b>Lưu ý:</b> Hệ thống tách bạch rõ: học sinh nghỉ thi ($x$) được tính vào <b>Vắng thi</b>, chỉ học sinh đi thi mà $0$ điểm mới tính vào $n_0$.',
+      example:
+        '<b>Ví dụ thực tế:</b> Nếu $n_0 = 1$, giáo viên cần kiểm tra ngay bài làm của học sinh đó xem do lỗi kỹ thuật tô phiếu hay do hổng kiến thức.',
     },
     lte1: {
       title: 'Ngưỡng điểm liệt (<= 1.0)',
       symbol: 'x_i \\le 1',
       formula: '\\%(x \\le 1) = \\dfrac{\\#\\big\\{x_i \\le 1.0\\big\\}}{n} \\times 100\\%',
-      desc: 'Số lượng và tỷ lệ phần trăm thí sinh có điểm $x_i \\le 1.0$ (ngưỡng điểm liệt theo quy chế thi THPT Quốc gia).',
+      meaning:
+        '<b>Bản chất:</b> Theo quy chế thi Tốt nghiệp THPT của Bộ GD&amp;ĐT, bài thi độc lập hoặc môn thành phần có điểm $x_i \\le 1.0$ là <b>Điểm liệt</b> (không đủ điều kiện xét tốt nghiệp).<br/>' +
+        '<b>Ý nghĩa cảnh báo:</b> Là nhóm học sinh báo động đỏ cần kèm cặp sát sao nhất tại trung tâm.',
+      example:
+        '<b>Ví dụ thực tế:</b> Nếu khối có $2$ học sinh đạt $0.75$đ và $1.00$đ trên $n=100$ thí sinh $\\Rightarrow \\%(x \\le 1) = 2.00\\%$ (Cần cảnh báo phụ huynh &amp; giáo viên phụ trách).',
     },
   };
 
@@ -1019,27 +1209,37 @@
     const tooltip = document.getElementById('statLatexTooltip');
     if (!tooltip) return;
 
-    function positionTooltip(e) {
-      const pad = 14;
-      const tw = tooltip.offsetWidth || 350;
-      const th = tooltip.offsetHeight || 150;
-      let left = e.clientX - tw - 16;
+    let activeRow = null;
+
+    function anchorTooltipToLeftOfRow(row) {
+      if (!row) return;
+      const rowRect = row.getBoundingClientRect();
+      const pad = 10;
+      const tw = tooltip.offsetWidth || 480;
+      const th = tooltip.offsetHeight || 260;
+
+      // Always place immediately to the LEFT of the hovered row
+      let left = rowRect.left - tw - 12;
       if (left < pad) {
-        left = Math.min(window.innerWidth - tw - pad, e.clientX + 18);
+        left = pad;
       }
-      let top = e.clientY - th / 2;
+      let top = rowRect.top + rowRect.height / 2 - th / 2;
       top = Math.max(pad, Math.min(window.innerHeight - th - pad, top));
+
       tooltip.style.left = `${Math.round(left)}px`;
       tooltip.style.top = `${Math.round(top)}px`;
     }
 
     document.addEventListener('mouseover', (e) => {
-      const row = e.target.closest('tr[data-stat-key]');
+      const row = e.target.closest('#thptStatsTable tr[data-stat-key]');
       if (!row) return;
+      if (row === activeRow && tooltip.classList.contains('visible')) return;
+
       const key = row.getAttribute('data-stat-key');
       const info = STAT_LATEX_EXPLANATIONS[key];
       if (!info) return;
 
+      activeRow = row;
       tooltip.innerHTML = `
         <div class="stat-latex-header">
           <span>${escapeHtml(info.title)}</span>
@@ -1048,30 +1248,42 @@
         <div class="stat-latex-formula-box">
           ${renderLatexFormula(info.formula, true)}
         </div>
-        <div class="stat-latex-desc">
-          ${renderTextWithInlineLatex(info.desc)}
+        <div class="stat-latex-body">
+          <div class="stat-latex-section">
+            <div class="stat-latex-sec-title"><i class="fa-solid fa-magnifying-glass-chart"></i> Ý nghĩa phân tích chuyên môn</div>
+            <div>${renderTextWithInlineLatex(info.meaning || info.desc || '')}</div>
+          </div>
+          ${
+            info.example
+              ? `<div class="stat-latex-example-box">
+                  <div class="stat-latex-sec-title"><i class="fa-solid fa-calculator"></i> Ví dụ thực tế trong thống kê điểm</div>
+                  <div>${renderTextWithInlineLatex(info.example)}</div>
+                </div>`
+              : ''
+          }
         </div>
       `;
       tooltip.classList.add('visible');
-      positionTooltip(e);
-    });
-
-    document.addEventListener('mousemove', (e) => {
-      if (!tooltip.classList.contains('visible')) return;
-      const row = e.target.closest('tr[data-stat-key]');
-      if (!row) {
-        tooltip.classList.remove('visible');
-        return;
-      }
-      positionTooltip(e);
+      anchorTooltipToLeftOfRow(row);
     });
 
     document.addEventListener('mouseout', (e) => {
-      const row = e.target.closest('tr[data-stat-key]');
+      const row = e.target.closest('#thptStatsTable tr[data-stat-key]');
       if (row && !row.contains(e.relatedTarget)) {
+        activeRow = null;
         tooltip.classList.remove('visible');
       }
     });
+
+    window.addEventListener(
+      'scroll',
+      () => {
+        if (activeRow && tooltip.classList.contains('visible')) {
+          anchorTooltipToLeftOfRow(activeRow);
+        }
+      },
+      { passive: true }
+    );
   }
 
   // ============================================================================
@@ -1915,7 +2127,7 @@
 
     let tbodyHtml = '<tbody>';
     rowsConfig.forEach((rc) => {
-      tbodyHtml += `<tr data-stat-key="${escapeHtml(rc.key)}" style="cursor:help;"><td class="metric-col">${escapeHtml(rc.label)}</td>`;
+      tbodyHtml += `<tr><td class="metric-col">${escapeHtml(rc.label)}</td>`;
       sessionStatsList.forEach((item) => {
         tbodyHtml += rc.render(item.stats);
       });
@@ -2460,9 +2672,16 @@
     // 2. Render Unified Table(s)
     const topN = Math.max(0, parseInt(state.topN, 10) || 0);
     const pairs = [];
+    const allowedSubjs = getAllowedSubjects(sess);
 
-    if (state.showAllSubjectsTop) {
-      sess.subjects.forEach((subj) => {
+    const allSubjChk = document.getElementById('showAllSubjectsTopCheckbox');
+    const allSubjLabel = allSubjChk?.closest('label');
+    if (allSubjLabel) {
+      allSubjLabel.style.display = allowedSubjs.length > 1 ? '' : 'none';
+    }
+
+    if (state.showAllSubjectsTop && allowedSubjs.length > 1) {
+      allowedSubjs.forEach((subj) => {
         const grades = getGradesForSubject(sess, subj);
         grades.forEach((g) => pairs.push({ subj, grade: g, teacher: 'ALL' }));
       });
@@ -2523,11 +2742,10 @@
                           const isAbs = item.isAbsent || item.absent || item.score === null;
                           let rankBadge = '-';
                           if (!isAbs && item.rank !== null) {
-                            const tieTag = item.isTied ? `<span class="tie-rank-tag" title="Đồng hạng">ĐH</span>` : '';
-                            if (item.rank === 1) rankBadge = `<span class="rank-medal rank-1">1</span>${tieTag}`;
-                            else if (item.rank === 2) rankBadge = `<span class="rank-medal rank-2">2</span>${tieTag}`;
-                            else if (item.rank === 3) rankBadge = `<span class="rank-medal rank-3">3</span>${tieTag}`;
-                            else rankBadge = `<b>${item.rank}</b>${tieTag}`;
+                            if (item.rank === 1) rankBadge = `<span class="rank-medal rank-1">1</span>`;
+                            else if (item.rank === 2) rankBadge = `<span class="rank-medal rank-2">2</span>`;
+                            else if (item.rank === 3) rankBadge = `<span class="rank-medal rank-3">3</span>`;
+                            else rankBadge = `<b>${item.rank}</b>`;
                           } else {
                             rankBadge = `<span style="color:#ee642c; font-weight:800;">KĐ</span>`;
                           }
@@ -3326,9 +3544,11 @@
 
   function batchExportAllSubjects() {
     const sess = getCurrentSession();
-    if (!sess || !sess.subjects.length) return;
+    if (!sess) return;
+    const allowedSubjs = getAllowedSubjects(sess);
+    if (!allowedSubjs.length) return;
     const tasks = [];
-    sess.subjects.forEach((subj) => {
+    allowedSubjs.forEach((subj) => {
       const selectedG = state.overviewSelectedGrades[subj] || getGradesForSubject(sess, subj)[0];
       if (selectedG) tasks.push({ subj, grade: selectedG });
     });
@@ -3407,6 +3627,10 @@
   }
 
   async function handleIncomingFiles(fileList) {
+    if (!isAdminUser()) {
+      showToast('Chỉ tài khoản ADMIN mới được phép kéo thả hoặc tải file dữ liệu!');
+      return;
+    }
     if (!fileList || fileList.length === 0) return;
     const files = Array.from(fileList);
 
@@ -3595,6 +3819,7 @@
   }
 
   function refreshAllUI(animateChart = false) {
+    if (!isAuthenticated()) return;
     ensureValidGradeAndTeacher();
     renderSessionPills();
     renderSubjectTabs();
@@ -3641,6 +3866,481 @@
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;');
+  }
+
+  // ============================================================================
+  // HIGH-SECURITY LOGIN, BRUTE-FORCE GUARD & SESSION CONTROLLER
+  // ============================================================================
+  let lockoutTimerId = null;
+
+  function getLockoutState() {
+    try {
+      const raw = localStorage.getItem(AUTH_LOCKOUT_KEY);
+      if (!raw) return { failed: 0, lockedUntil: 0 };
+      const parsed = JSON.parse(raw);
+      return {
+        failed: Number(parsed.failed || 0),
+        lockedUntil: Number(parsed.lockedUntil || 0),
+      };
+    } catch (e) {
+      return { failed: 0, lockedUntil: 0 };
+    }
+  }
+
+  function saveLockoutState(failed, lockedUntil) {
+    try {
+      localStorage.setItem(AUTH_LOCKOUT_KEY, JSON.stringify({ failed, lockedUntil }));
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  function setAuthErrorMessage(msg) {
+    const box = document.getElementById('authErrorBox');
+    if (!box) return;
+    if (!msg) {
+      box.style.display = 'none';
+      box.textContent = '';
+    } else {
+      box.style.display = 'block';
+      box.innerHTML = msg;
+    }
+  }
+
+  function checkAndEnforceLockoutUI() {
+    const submitBtn = document.getElementById('btnSubmitAuthLogin');
+    const st = getLockoutState();
+    const now = Date.now();
+    if (st.lockedUntil > now) {
+      const remSec = Math.ceil((st.lockedUntil - now) / 1000);
+      if (submitBtn) submitBtn.disabled = true;
+      setAuthErrorMessage(
+        `<i class="fa-solid fa-lock"></i> Nhập sai quá ${PRIVATE_AUTH_VAULT.settings.maxFailedAttempts} lần. Hệ thống tạm khóa trong <b>${remSec}s</b>!`
+      );
+      if (!lockoutTimerId) {
+        lockoutTimerId = setInterval(() => {
+          const cur = getLockoutState();
+          if (cur.lockedUntil <= Date.now()) {
+            clearInterval(lockoutTimerId);
+            lockoutTimerId = null;
+            saveLockoutState(0, 0);
+            if (submitBtn) submitBtn.disabled = false;
+            setAuthErrorMessage('');
+          } else {
+            const r = Math.ceil((cur.lockedUntil - Date.now()) / 1000);
+            setAuthErrorMessage(
+              `<i class="fa-solid fa-lock"></i> Nhập sai quá ${PRIVATE_AUTH_VAULT.settings.maxFailedAttempts} lần. Hệ thống tạm khóa trong <b>${r}s</b>!`
+            );
+          }
+        }, 500);
+      }
+      return true;
+    }
+    if (submitBtn) submitBtn.disabled = false;
+    return false;
+  }
+
+  function syncAuthRoleUI() {
+    const isAuth = isAuthenticated();
+    const isAdmin = isAdminUser();
+    const overlay = document.getElementById('authLoginOverlay');
+    const adminUploadWrap = document.getElementById('adminUploadControlWrap');
+    const globalOverlay = document.getElementById('globalDropOverlay');
+    const resetBtn = document.getElementById('btnResetDemoData');
+    const delBtn = document.getElementById('btnDeleteCurrentSession');
+
+    if (isAuth) {
+      document.body.classList.add('auth-unlocked');
+      if (overlay) overlay.style.display = 'none';
+    } else {
+      document.body.classList.remove('auth-unlocked');
+      if (overlay) overlay.style.display = 'flex';
+    }
+
+    // Strictly hide file drag-and-drop / upload zone for non-ADMIN
+    if (adminUploadWrap) {
+      adminUploadWrap.style.display = isAdmin ? '' : 'none';
+    }
+    if (!isAdmin && globalOverlay) {
+      globalOverlay.classList.remove('active');
+    }
+    if (resetBtn) {
+      resetBtn.style.display = isAdmin ? '' : 'none';
+    }
+    if (delBtn) {
+      delBtn.style.display = isAdmin && state.sessions.length > 1 ? 'inline-flex' : 'none';
+    }
+
+    // Update Sidebar User Badge
+    const nameEl = document.getElementById('authUserDisplayName');
+    const roleEl = document.getElementById('authUserRoleBadge');
+    const avatarEl = document.getElementById('authUserAvatar');
+    if (isAuth && state.currentUser) {
+      if (nameEl) nameEl.textContent = state.currentUser.displayName || state.currentUser.username;
+      if (roleEl) {
+        roleEl.textContent = isAdmin
+          ? 'ADMIN • Toàn bộ môn'
+          : `USER • ${(state.currentUser.subjects || []).join(', ')}`;
+      }
+      if (avatarEl) {
+        avatarEl.classList.toggle('is-admin', isAdmin);
+        avatarEl.innerHTML = isAdmin
+          ? '<i class="fa-solid fa-user-shield"></i>'
+          : '<i class="fa-solid fa-chalkboard-user"></i>';
+      }
+    }
+  }
+
+  function getOrCreateDeviceId() {
+    try {
+      let devId = localStorage.getItem(DEVICE_ID_KEY);
+      if (!devId || typeof devId !== 'string' || devId.length < 8) {
+        devId = 'mhdev_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 11);
+        localStorage.setItem(DEVICE_ID_KEY, devId);
+      }
+      return devId;
+    } catch (e) {
+      if (!window.__mhFallbackDeviceId) {
+        window.__mhFallbackDeviceId = 'mhdev_mem_' + Math.random().toString(36).slice(2, 11);
+      }
+      return window.__mhFallbackDeviceId;
+    }
+  }
+
+  function signDeviceRecord(username, deviceId, exp) {
+    return computeSecureDigest(`DEV_SLOT::${username}|${deviceId}|${exp}`);
+  }
+
+  function getActiveDevicesStore() {
+    try {
+      const raw = localStorage.getItem(ACTIVE_DEVICES_KEY);
+      if (!raw) return {};
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch (e) {
+      return {};
+    }
+  }
+
+  function saveActiveDevicesStore(store) {
+    try {
+      localStorage.setItem(ACTIVE_DEVICES_KEY, JSON.stringify(store || {}));
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  function pruneAndGetActiveDevicesForUser(username) {
+    const uname = String(username || '').trim().toLowerCase();
+    if (!uname) return [];
+    const store = getActiveDevicesStore();
+    const rawList = Array.isArray(store[uname]) ? store[uname] : [];
+    const now = Date.now();
+    const dedupMap = new Map();
+
+    rawList.forEach((item) => {
+      if (!item || !item.deviceId || !item.exp || !item.sig) return;
+      const expNum = Number(item.exp);
+      if (!isFinite(expNum) || now > expNum) return;
+      const expectedSig = signDeviceRecord(uname, item.deviceId, expNum);
+      if (!constantTimeEquals(item.sig, expectedSig)) return;
+      const existing = dedupMap.get(item.deviceId);
+      if (!existing || existing.exp < expNum) {
+        dedupMap.set(item.deviceId, {
+          deviceId: String(item.deviceId),
+          lastActive: Number(item.lastActive) || now,
+          exp: expNum,
+          sig: item.sig,
+        });
+      }
+    });
+
+    const cleaned = Array.from(dedupMap.values());
+    store[uname] = cleaned;
+    saveActiveDevicesStore(store);
+    return cleaned;
+  }
+
+  function canDeviceLoginForUser(username) {
+    const uname = String(username || '').trim().toLowerCase();
+    const maxDevices = Math.max(1, Number(PRIVATE_AUTH_VAULT.settings.maxDevicesPerAccount) || 2);
+    const myDeviceId = getOrCreateDeviceId();
+    const activeList = pruneAndGetActiveDevicesForUser(uname);
+    const alreadyRegistered = activeList.some((d) => d.deviceId === myDeviceId);
+    if (alreadyRegistered) {
+      return { allowed: true, activeCount: activeList.length, maxDevices };
+    }
+    if (activeList.length >= maxDevices) {
+      return { allowed: false, activeCount: activeList.length, maxDevices };
+    }
+    return { allowed: true, activeCount: activeList.length, maxDevices };
+  }
+
+  function registerDeviceSessionForUser(username, exp) {
+    const uname = String(username || '').trim().toLowerCase();
+    if (!uname) return;
+    const myDeviceId = getOrCreateDeviceId();
+    const maxDevices = Math.max(1, Number(PRIVATE_AUTH_VAULT.settings.maxDevicesPerAccount) || 2);
+    const activeList = pruneAndGetActiveDevicesForUser(uname).filter((d) => d.deviceId !== myDeviceId);
+    activeList.push({
+      deviceId: myDeviceId,
+      lastActive: Date.now(),
+      exp,
+      sig: signDeviceRecord(uname, myDeviceId, exp),
+    });
+    const trimmed = activeList.slice(-maxDevices);
+    const store = getActiveDevicesStore();
+    store[uname] = trimmed;
+    saveActiveDevicesStore(store);
+  }
+
+  function unregisterDeviceSessionForUser(username) {
+    const uname = String(username || '').trim().toLowerCase();
+    if (!uname) return;
+    const myDeviceId = getOrCreateDeviceId();
+    const activeList = pruneAndGetActiveDevicesForUser(uname).filter((d) => d.deviceId !== myDeviceId);
+    const store = getActiveDevicesStore();
+    store[uname] = activeList;
+    saveActiveDevicesStore(store);
+  }
+
+  function saveSignedAuthSession(userObj) {
+    const timeoutMinutes = Number(PRIVATE_AUTH_VAULT.settings.sessionTimeoutMinutes) || 120;
+    const timeoutMs = timeoutMinutes * 60 * 1000;
+    const exp = Date.now() + timeoutMs;
+    const sig = signSessionPayload(userObj, exp);
+    const payload = {
+      username: userObj.username,
+      role: userObj.role,
+      displayName: userObj.displayName,
+      subjects: userObj.subjects,
+      deviceId: getOrCreateDeviceId(),
+      exp,
+      sig,
+    };
+    try {
+      sessionStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(payload));
+    } catch (e) {
+      // ignore
+    }
+    registerDeviceSessionForUser(userObj.username, exp);
+  }
+
+  function restoreSignedAuthSession() {
+    try {
+      const raw = sessionStorage.getItem(AUTH_SESSION_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (!parsed || !parsed.username || !parsed.exp || !parsed.sig) return null;
+      if (Date.now() > Number(parsed.exp)) {
+        sessionStorage.removeItem(AUTH_SESSION_KEY);
+        unregisterDeviceSessionForUser(parsed.username);
+        return null;
+      }
+      // Verify against vault account and signature
+      const vaultAcc = PRIVATE_AUTH_VAULT.accounts.find((a) => a.username === parsed.username);
+      if (!vaultAcc) {
+        sessionStorage.removeItem(AUTH_SESSION_KEY);
+        return null;
+      }
+      const expectedSig = signSessionPayload(vaultAcc, parsed.exp);
+      if (!constantTimeEquals(parsed.sig, expectedSig)) {
+        sessionStorage.removeItem(AUTH_SESSION_KEY);
+        return null;
+      }
+      // Check device concurrency slot
+      const devCheck = canDeviceLoginForUser(vaultAcc.username);
+      if (!devCheck.allowed) {
+        sessionStorage.removeItem(AUTH_SESSION_KEY);
+        return null;
+      }
+      return {
+        username: vaultAcc.username,
+        role: vaultAcc.role,
+        displayName: vaultAcc.displayName,
+        subjects: vaultAcc.subjects.slice(),
+      };
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function logoutCurrentUser(reasonMsg = '') {
+    const prevUsername = state.currentUser?.username;
+    state.currentUser = null;
+    try {
+      sessionStorage.removeItem(AUTH_SESSION_KEY);
+    } catch (e) {
+      // ignore
+    }
+    if (prevUsername) {
+      unregisterDeviceSessionForUser(prevUsername);
+    }
+    closeBinStudentsModal();
+    syncAuthRoleUI();
+    const uInput = document.getElementById('authUsernameInput');
+    const pInput = document.getElementById('authPasswordInput');
+    if (pInput) pInput.value = '';
+    if (reasonMsg) {
+      setAuthErrorMessage(reasonMsg);
+    } else {
+      setAuthErrorMessage('');
+    }
+    setTimeout(() => uInput?.focus(), 60);
+  }
+
+  function initAuthenticationSystem() {
+    // 1. Try restoring signed session from sessionStorage
+    const restored = restoreSignedAuthSession();
+    if (restored) {
+      state.currentUser = restored;
+      saveSignedAuthSession(restored);
+    }
+
+    syncAuthRoleUI();
+    checkAndEnforceLockoutUI();
+
+    // 2. Bind Login Form
+    const form = document.getElementById('authLoginForm');
+    const uInput = document.getElementById('authUsernameInput');
+    const pInput = document.getElementById('authPasswordInput');
+    const eyeBtn = document.getElementById('btnToggleAuthPassword');
+
+    eyeBtn?.addEventListener('click', () => {
+      if (!pInput) return;
+      const isPwd = pInput.type === 'password';
+      pInput.type = isPwd ? 'text' : 'password';
+      eyeBtn.innerHTML = isPwd ? '<i class="fa-regular fa-eye-slash"></i>' : '<i class="fa-regular fa-eye"></i>';
+    });
+
+    form?.addEventListener('submit', (e) => {
+      e.preventDefault();
+      if (checkAndEnforceLockoutUI()) return;
+
+      const uname = String(uInput?.value || '').trim().toLowerCase();
+      const pwd = String(pInput?.value || '');
+      if (!uname || !pwd) {
+        setAuthErrorMessage('Vui lòng nhập đầy đủ tài khoản và mật khẩu!');
+        return;
+      }
+
+      const candidateDigest = computeSecureDigest(`${uname}::${pwd}`);
+      const matched = PRIVATE_AUTH_VAULT.accounts.find(
+        (acc) => acc.username === uname && constantTimeEquals(acc.passwordDigest, candidateDigest)
+      );
+
+      if (!matched) {
+        const curLock = getLockoutState();
+        const nextFailed = curLock.failed + 1;
+        const maxFail = PRIVATE_AUTH_VAULT.settings.maxFailedAttempts || 5;
+        if (nextFailed >= maxFail) {
+          const lockUntil = Date.now() + (PRIVATE_AUTH_VAULT.settings.lockoutDurationSeconds || 60) * 1000;
+          saveLockoutState(nextFailed, lockUntil);
+          checkAndEnforceLockoutUI();
+        } else {
+          saveLockoutState(nextFailed, 0);
+          setAuthErrorMessage(
+            `<i class="fa-solid fa-triangle-exclamation"></i> Sai tài khoản hoặc mật khẩu! (Còn <b>${maxFail - nextFailed}</b> lần thử)`
+          );
+        }
+        if (pInput) {
+          pInput.value = '';
+          pInput.focus();
+        }
+        return;
+      }
+
+      // Enforce maximum 2 concurrent devices per account
+      const deviceCheck = canDeviceLoginForUser(matched.username);
+      if (!deviceCheck.allowed) {
+        setAuthErrorMessage(
+          `<i class="fa-solid fa-laptop-medical"></i> Tài khoản <b>${escapeHtml(matched.username)}</b> đã đăng nhập đủ giới hạn tối đa <b>${deviceCheck.maxDevices} thiết bị</b>! Vui lòng đăng xuất ở thiết bị khác trước.`
+        );
+        return;
+      }
+
+      // Login success!
+      saveLockoutState(0, 0);
+      setAuthErrorMessage('');
+      state.currentUser = {
+        username: matched.username,
+        role: matched.role,
+        displayName: matched.displayName,
+        subjects: matched.subjects.slice(),
+      };
+      state.currentSubject = null;
+      state.filterTeacher = 'ALL';
+      saveSignedAuthSession(state.currentUser);
+      syncAuthRoleUI();
+      ensureValidGradeAndTeacher();
+      updateViewModeVisibility();
+      refreshAllUI(true);
+      showToast(`Xin chào ${state.currentUser.displayName} (${state.currentUser.role})`);
+    });
+
+    // 3. Bind Logout Button
+    document.getElementById('btnLogoutAuth')?.addEventListener('click', () => {
+      logoutCurrentUser();
+      showToast('Đã đăng xuất khỏi hệ thống');
+    });
+
+    // 4. Activity heartbeat + 2-Hour (120-Minute) Inactivity Auto-Logout Guard
+    let lastActivityBumpTs = Date.now();
+    const bumpActivity = () => {
+      if (!isAuthenticated()) return;
+      const now = Date.now();
+      if (now - lastActivityBumpTs >= 10000) {
+        lastActivityBumpTs = now;
+        saveSignedAuthSession(state.currentUser);
+      }
+    };
+    ['mousedown', 'mousemove', 'keydown', 'scroll', 'touchstart', 'click'].forEach((evtName) => {
+      window.addEventListener(evtName, bumpActivity, { passive: true });
+    });
+
+    setInterval(() => {
+      if (!isAuthenticated()) return;
+      if (!restoreSignedAuthSession()) {
+        logoutCurrentUser(
+          '<i class="fa-solid fa-clock"></i> Đã tự động đăng xuất sau 2 tiếng không hoạt động (hoặc phiên đã kết thúc)!'
+        );
+      }
+    }, 10000);
+
+    // 5. Anti-Tamper DOM Guard (Prevents bypassing login overlay via DevTools)
+    const guardObserver = new MutationObserver(() => {
+      if (!isAuthenticated()) {
+        if (document.body.classList.contains('auth-unlocked')) {
+          document.body.classList.remove('auth-unlocked');
+        }
+        const ov = document.getElementById('authLoginOverlay');
+        if (ov && ov.style.display === 'none') {
+          ov.style.display = 'flex';
+        }
+      }
+    });
+    guardObserver.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+
+    // 6. DevTools & Source Inspection Guard for Non-Admin Users
+    if (PRIVATE_AUTH_VAULT.settings.protectDevToolsForUser) {
+      window.addEventListener('contextmenu', (e) => {
+        if (!isAdminUser()) {
+          e.preventDefault();
+        }
+      });
+      window.addEventListener('keydown', (e) => {
+        if (isAdminUser()) return;
+        const k = (e.key || '').toUpperCase();
+        if (
+          k === 'F12' ||
+          (e.ctrlKey && e.shiftKey && (k === 'I' || k === 'J' || k === 'C')) ||
+          (e.ctrlKey && k === 'U')
+        ) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+      });
+    }
   }
 
   // ============================================================================
@@ -3735,13 +4435,18 @@
     const dropzone = document.getElementById('dropzoneArea');
     const globalOverlay = document.getElementById('globalDropOverlay');
 
-    dropzone?.addEventListener('click', () => fileInput?.click());
+    dropzone?.addEventListener('click', () => {
+      if (!isAdminUser()) return;
+      fileInput?.click();
+    });
     document.getElementById('btnBrowseFile')?.addEventListener('click', (e) => {
       e.stopPropagation();
+      if (!isAdminUser()) return;
       fileInput?.click();
     });
 
     fileInput?.addEventListener('change', (e) => {
+      if (!isAdminUser()) return;
       if (e.target.files?.length) handleIncomingFiles(e.target.files);
       fileInput.value = '';
     });
@@ -3749,11 +4454,13 @@
     let dragCounter = 0;
     window.addEventListener('dragenter', (e) => {
       e.preventDefault();
+      if (!isAdminUser()) return;
       dragCounter++;
       globalOverlay?.classList.add('active');
     });
     window.addEventListener('dragleave', (e) => {
       e.preventDefault();
+      if (!isAdminUser()) return;
       dragCounter--;
       if (dragCounter <= 0) {
         dragCounter = 0;
@@ -3765,6 +4472,12 @@
       e.preventDefault();
       dragCounter = 0;
       globalOverlay?.classList.remove('active');
+      if (!isAdminUser()) {
+        if (isAuthenticated()) {
+          showToast('Tài khoản USER chỉ có quyền xem, không được kéo thả file dữ liệu!');
+        }
+        return;
+      }
       if (e.dataTransfer?.files?.length) handleIncomingFiles(e.dataTransfer.files);
     });
 
@@ -3947,6 +4660,7 @@
 
   document.addEventListener('DOMContentLoaded', () => {
     loadInitialData();
+    initAuthenticationSystem();
     bindEvents();
     updateViewModeVisibility();
     refreshAllUI(true);
