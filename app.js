@@ -8,7 +8,7 @@
 (function () {
   'use strict';
 
-  const STORAGE_KEY = 'TRUNG_TAM_MINH_HOANG_SESSIONS_V3_REAL_L1';
+  const STORAGE_KEY = 'TRUNG_TAM_MINH_HOANG_SESSIONS_V5_REAL_L1';
   const CENTER_NAME_KEY = 'TRUNG_TAM_MINH_HOANG_NAME_V2';
   const AUTH_SESSION_KEY = 'MH_AUTH_SECURE_TOKEN_V1';
   const AUTH_LOCKOUT_KEY = 'MH_AUTH_BRUTEFORCE_GUARD_V1';
@@ -150,12 +150,12 @@
     return Boolean(state.currentUser && state.currentUser.role === 'ADMIN');
   }
 
-  function getAllowedSubjects(session) {
-    if (!session || !Array.isArray(session.subjects)) return [];
-    if (!isAuthenticated()) return [];
+  function isSubjectAllowedForCurrentUser(subject) {
+    if (!isAuthenticated() || !subject) return false;
     if (isAdminUser() || (state.currentUser.subjects && state.currentUser.subjects.includes('ALL'))) {
-      return session.subjects.slice();
+      return true;
     }
+    const normTarget = normalizeSubjectName(subject);
     const allowedSet = new Set();
     (state.currentUser.subjects || []).forEach((s) => {
       const norm = normalizeSubjectName(s);
@@ -166,7 +166,13 @@
         allowedSet.add('KHTN (Sinh)');
       }
     });
-    return session.subjects.filter((s) => allowedSet.has(normalizeSubjectName(s)));
+    return allowedSet.has(normTarget);
+  }
+
+  function getAllowedSubjects(session) {
+    if (!session || !Array.isArray(session.subjects)) return [];
+    if (!isAuthenticated()) return [];
+    return session.subjects.filter((s) => isSubjectAllowedForCurrentUser(s));
   }
 
   function parseCSVToRows(csvText) {
@@ -596,7 +602,7 @@
   // INITIALIZE & GRADE ENFORCEMENT (Never combine all grades!)
   // ============================================================================
   function getGradesForSubject(session, subject) {
-    if (!session) return [];
+    if (!session || !isSubjectAllowedForCurrentUser(subject)) return [];
     const subjRecords = session.records.filter((r) => r.subject === subject);
     return Array.from(new Set(subjRecords.map((r) => String(r.grade)).filter((g) => g && g !== 'Chưa rõ'))).sort(
       (a, b) => Number(a) - Number(b)
@@ -606,9 +612,17 @@
   function ensureValidGradeAndTeacher() {
     const sess = getCurrentSession();
     if (!sess) return;
+    if (!isAuthenticated()) return;
+
     const allowedSubjs = getAllowedSubjects(sess);
-    if (!state.currentSubject || !allowedSubjs.includes(state.currentSubject)) {
-      state.currentSubject = allowedSubjs[0] || sess.subjects[0] || 'Toán THPT';
+    if (!state.currentSubject || !allowedSubjs.includes(state.currentSubject) || !isSubjectAllowedForCurrentUser(state.currentSubject)) {
+      if (allowedSubjs.length > 0) {
+        state.currentSubject = allowedSubjs[0];
+      } else if (isAdminUser()) {
+        state.currentSubject = sess.subjects[0] || 'Toán THPT';
+      } else {
+        state.currentSubject = normalizeSubjectName(state.currentUser?.subjects?.[0] || '');
+      }
     }
 
     const grades = getGradesForSubject(sess, state.currentSubject);
@@ -616,6 +630,8 @@
       if (!state.filterGrade || state.filterGrade === 'ALL' || !grades.includes(String(state.filterGrade))) {
         state.filterGrade = grades[0];
       }
+    } else {
+      state.filterGrade = '';
     }
 
     // Ensure teacher exists in this (subject, grade)
@@ -685,7 +701,7 @@
 
   async function autoScanFolderExamFiles(showNotice = false) {
     if (window.location.protocol === 'file:') return;
-    let foundAnyNew = false;
+    let syncedAny = false;
     for (let k = 1; k <= 12; k++) {
       const candidates = [`L${k}.xlsx`, `L${k}.csv`, `l${k}.xlsx`, `l${k}.csv`];
       for (let c = 0; c < candidates.length; c++) {
@@ -703,9 +719,8 @@
           }
           const parsed = parseCenterRows(rows);
           if (parsed.totalRecords > 0) {
-            const existed = state.sessions.some((s) => s.fileCode === `L${k}`);
             upsertAdminSessionFromParsed(k, fname.toUpperCase().replace('.XLSX', '.xlsx').replace('.CSV', '.csv'), parsed);
-            if (!existed) foundAnyNew = true;
+            syncedAny = true;
             break;
           }
         } catch (err) {
@@ -713,10 +728,10 @@
         }
       }
     }
-    if (foundAnyNew || showNotice) {
+    if (syncedAny || showNotice) {
       ensureValidGradeAndTeacher();
       saveSessionsToStorage();
-      refreshAllUI(true);
+      refreshAllUI(false);
       if (showNotice) {
         showToast(`Đã quét thư mục: phát hiện ${state.sessions.length} lần thi (${state.sessions.map((s) => s.fileCode || s.shortName).join(', ')})`);
       }
@@ -744,7 +759,6 @@
           });
           state.sessions = sortSessionsByOrder(parsed);
           state.currentSessionId = state.sessions[0].id;
-          state.currentSubject = state.sessions[0].subjects[0] || 'Toán THPT';
           ensureValidGradeAndTeacher();
           autoScanFolderExamFiles(false);
           return;
@@ -778,7 +792,6 @@
 
     state.sessions = sortSessionsByOrder(state.sessions);
     state.currentSessionId = state.sessions[0].id;
-    state.currentSubject = state.sessions[0].subjects[0] || 'Toán THPT';
     ensureValidGradeAndTeacher();
     saveSessionsToStorage();
     if (showNotification) {
@@ -801,8 +814,9 @@
   }
 
   function getFilteredRecords(session, subject, teacher = 'ALL', grade = null) {
-    if (!session) return [];
+    if (!session || !isAuthenticated()) return [];
     return session.records.filter((r) => {
+      if (!isSubjectAllowedForCurrentUser(r.subject)) return false;
       if (subject && subject !== 'ALL' && r.subject !== subject) return false;
       if (grade && grade !== 'ALL' && String(r.grade) !== String(grade)) return false;
       if (teacher && teacher !== 'ALL' && r.teacher !== teacher) return false;
@@ -843,8 +857,9 @@
 
     state.sessions.forEach((sess) => {
       const isActive = sess.id === state.currentSessionId;
-      const scoredCount = sess.records.filter((r) => !r.absent && r.score !== null).length;
-      const absentCount = sess.records.filter((r) => r.absent || r.score === null).length;
+      const allowedRecs = sess.records.filter((r) => isSubjectAllowedForCurrentUser(r.subject));
+      const scoredCount = allowedRecs.filter((r) => !r.absent && r.score !== null).length;
+      const absentCount = allowedRecs.filter((r) => r.absent || r.score === null).length;
       const pill = document.createElement('div');
       pill.className = 'session-pill' + (isActive ? ' active' : '');
       pill.innerHTML = `
@@ -942,7 +957,7 @@
     if (!sess) return;
     ensureValidGradeAndTeacher();
 
-    const subjRecords = sess.records.filter((r) => r.subject === state.currentSubject);
+    const subjRecords = getFilteredRecords(sess, state.currentSubject, 'ALL', 'ALL');
     const grades = getGradesForSubject(sess, state.currentSubject);
 
     // 1. Render Quick Grade Pills (ONLY individual grades — NO "Tất cả Khối")
@@ -2249,7 +2264,7 @@
   function renderGroupRankingSection() {
     const sess = getCurrentSession();
     if (!sess) return;
-    const subjRecords = sess.records.filter((r) => r.subject === state.currentSubject);
+    const subjRecords = getFilteredRecords(sess, state.currentSubject, 'ALL', 'ALL');
 
     const subView1 = document.getElementById('subViewTeacherByGrade');
     const subView2 = document.getElementById('subViewGradeSummary');
@@ -2796,7 +2811,8 @@
     if (!sess || !container) return;
     container.innerHTML = '';
 
-    sess.subjects.forEach((subj, idx) => {
+    const allowedSubjs = getAllowedSubjects(sess);
+    allowedSubjs.forEach((subj, idx) => {
       const grades = getGradesForSubject(sess, subj);
       if (!state.overviewSelectedGrades[subj] || !grades.includes(String(state.overviewSelectedGrades[subj]))) {
         state.overviewSelectedGrades[subj] = grades[0] || '10';
