@@ -21,7 +21,7 @@
  *      + Tổ KHTN      : ['KHTN (Lí)', 'KHTN (Hóa)', 'KHTN (Sinh)'] (1 tài khoản xem cả 3 phân môn KHTN)
  *
  * 3. Chính sách bảo mật nội bộ:
- *    - Giới hạn tối đa 2 thiết bị đăng nhập đồng thời trên mỗi tài khoản (maxDevicesPerAccount: 2).
+ *    - Giới hạn tối đa 7 thiết bị đăng nhập đồng thời trên mỗi tài khoản (maxDevicesPerAccount: 7).
  *    - Tự động đăng xuất sau 2 tiếng (120 phút) không hoạt động (sessionTimeoutMinutes: 120).
  *    - Dữ liệu tài khoản được nạp vào vùng nhớ bảo mật (Private Closure) và tự động xóa
  *      khỏi biến toàn cục `window` ngay khi khởi chạy.
@@ -33,7 +33,7 @@ window.ACCOUNT_CONFIG = {
     maxFailedAttempts: 5,          // Số lần nhập sai tối đa trước khi khóa tạm thời
     lockoutDurationSeconds: 60,    // Thời gian khóa tạm thời khi nhập sai quá số lần (giây)
     sessionTimeoutMinutes: 120,    // Tự động đăng xuất sau 2 tiếng (120 phút) không hoạt động
-    maxDevicesPerAccount: 2,       // Mỗi tài khoản chỉ đăng nhập tối đa trên 2 thiết bị
+    maxDevicesPerAccount: 7,       // Mỗi tài khoản được đăng nhập tối đa trên 7 thiết bị
     protectDevToolsForUser: true,  // Chặn phím tắt F12 / Ctrl+U đối với tài khoản USER hoặc chưa đăng nhập
     internalOnlyMode: true,        // Chế độ lưu hành nội bộ (chỉ người có link và tài khoản mới truy cập được)
   },
