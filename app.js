@@ -108,7 +108,7 @@
         maxFailedAttempts: 5,
         lockoutDurationSeconds: 60,
         sessionTimeoutMinutes: 120,
-        maxDevicesPerAccount: 2,
+        maxDevicesPerAccount: 7,
         protectDevToolsForUser: true,
         internalOnlyMode: true,
       },
@@ -4083,7 +4083,7 @@
 
   function canDeviceLoginForUser(username) {
     const uname = String(username || '').trim().toLowerCase();
-    const maxDevices = Math.max(1, Number(PRIVATE_AUTH_VAULT.settings.maxDevicesPerAccount) || 2);
+    const maxDevices = Math.max(1, Number(PRIVATE_AUTH_VAULT.settings.maxDevicesPerAccount) || 7);
     const myDeviceId = getOrCreateDeviceId();
     const activeList = pruneAndGetActiveDevicesForUser(uname);
     const alreadyRegistered = activeList.some((d) => d.deviceId === myDeviceId);
@@ -4100,7 +4100,7 @@
     const uname = String(username || '').trim().toLowerCase();
     if (!uname) return;
     const myDeviceId = getOrCreateDeviceId();
-    const maxDevices = Math.max(1, Number(PRIVATE_AUTH_VAULT.settings.maxDevicesPerAccount) || 2);
+    const maxDevices = Math.max(1, Number(PRIVATE_AUTH_VAULT.settings.maxDevicesPerAccount) || 7);
     const activeList = pruneAndGetActiveDevicesForUser(uname).filter((d) => d.deviceId !== myDeviceId);
     activeList.push({
       deviceId: myDeviceId,
